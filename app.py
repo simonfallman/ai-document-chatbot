@@ -128,6 +128,21 @@ if not os.getenv("OPENAI_API_KEY"):
     st.error("OPENAI_API_KEY is not set. Create a .env file with your key.")
     st.stop()
 
+# ── Password protection ───────────────────────────────────────────────────────
+APP_PASSWORD = os.getenv("APP_PASSWORD")
+if APP_PASSWORD:
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+    if not st.session_state.authenticated:
+        pwd = st.text_input("Enter password", type="password")
+        if st.button("Login"):
+            if pwd == APP_PASSWORD:
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error("Incorrect password.")
+        st.stop()
+
 # Session state
 if "chain" not in st.session_state:
     st.session_state.chain = None
