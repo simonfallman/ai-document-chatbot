@@ -136,18 +136,26 @@ def load_document(path: str, suffix: str):
     return None
 
 
-def build_vectorstore(docs):
+def build_vectorstore(docs, collection_name: str):
     splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
     chunks = splitter.split_documents(docs)
     embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
-    vectorstore = Chroma(persist_directory=CHROMA_DIR, embedding_function=embeddings)
+    vectorstore = Chroma(
+        persist_directory=CHROMA_DIR,
+        embedding_function=embeddings,
+        collection_name=collection_name,
+    )
     vectorstore.add_documents(chunks)
     return vectorstore
 
 
-def get_vectorstore():
+def get_vectorstore(collection_name: str):
     embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
-    return Chroma(persist_directory=CHROMA_DIR, embedding_function=embeddings)
+    return Chroma(
+        persist_directory=CHROMA_DIR,
+        embedding_function=embeddings,
+        collection_name=collection_name,
+    )
 
 
 def format_docs(docs):
@@ -278,14 +286,16 @@ with st.sidebar:
                     if docs is None:
                         st.error("Could not load document.")
                     else:
-                        vectorstore = build_vectorstore(docs)
+                        vectorstore = build_vectorstore(docs, collection_name=fhash)
                         indexed[fhash] = uploaded.name
                         save_indexed_hashes(indexed)
+                        st.session_state.active_collection = fhash
                         st.session_state.chain = build_chain(vectorstore)
                         st.success(f"Indexed: {uploaded.name}")
             else:
-                if st.session_state.chain is None:
-                    vectorstore = get_vectorstore()
+                if st.session_state.chain is None or st.session_state.get("active_collection") != fhash:
+                    vectorstore = get_vectorstore(collection_name=fhash)
+                    st.session_state.active_collection = fhash
                     st.session_state.chain = build_chain(vectorstore)
                 st.info(f"Already indexed: {indexed[fhash]}")
 
