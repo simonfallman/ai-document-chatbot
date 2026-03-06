@@ -40,13 +40,18 @@ Open [http://localhost:8501](http://localhost:8501) in your browser.
 
 ```bash
 docker build -t ai-document-chatbot .
-docker run -p 8501:8501 \
+docker run -d -p 8501:8501 \
   -v $(pwd)/chroma_db:/app/chroma_db \
   --env-file .env \
+  --restart unless-stopped \
   ai-document-chatbot
 ```
 
-The `chroma_db` volume mount ensures indexed documents survive container restarts.
+- `-d` runs the container in the background
+- `--restart unless-stopped` ensures the app restarts automatically after a server reboot
+- The `chroma_db` volume mount ensures indexed documents survive container restarts
+
+**Access the app** at `http://<your-server-ip>:8501`
 
 ## Configuration
 
@@ -61,5 +66,5 @@ The `chroma_db` volume mount ensures indexed documents survive container restart
 ## Running Tests
 
 ```bash
-python -m pytest test_pipeline.py
+python3 -m pytest test_pipeline.py
 ```
