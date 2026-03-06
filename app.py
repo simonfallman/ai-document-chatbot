@@ -234,8 +234,10 @@ if APP_PASSWORD:
         st.session_state.authenticated = False
     if not st.session_state.authenticated:
         st.title("📄 AI Document Chatbot")
-        pwd = st.text_input("Enter password", type="password")
-        if st.button("Login"):
+        with st.form("login_form"):
+            pwd = st.text_input("Enter password", type="password")
+            submitted = st.form_submit_button("Login")
+        if submitted:
             if pwd == APP_PASSWORD:
                 st.session_state.authenticated = True
                 st.rerun()
