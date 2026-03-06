@@ -327,7 +327,7 @@ with st.sidebar:
                 switch_conversation(conv["id"])
                 st.rerun()
         with col2:
-            if st.button("🗑", key=f"del_{conv['id']}"):
+            if st.button("✕", key=f"del_{conv['id']}"):
                 delete_conversation(conv["id"])
                 if st.session_state.current_conversation_id == conv["id"]:
                     new_conversation()
