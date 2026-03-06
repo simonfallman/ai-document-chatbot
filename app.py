@@ -9,6 +9,7 @@ import streamlit as st
 from dotenv import load_dotenv
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain_aws import ChatBedrock, BedrockEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -142,13 +143,19 @@ def load_document(path: str, suffix: str):
     return None
 
 
+def get_embeddings():
+    return BedrockEmbeddings(
+        model_id="amazon.titan-embed-text-v2:0",
+        region_name=os.getenv("AWS_REGION", "us-east-1"),
+    )
+
+
 def build_vectorstore(docs, collection_name: str):
     splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
     chunks = splitter.split_documents(docs)
-    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
     vectorstore = Chroma(
         persist_directory=CHROMA_DIR,
-        embedding_function=embeddings,
+        embedding_function=get_embeddings(),
         collection_name=collection_name,
     )
     vectorstore.add_documents(chunks)
@@ -156,10 +163,9 @@ def build_vectorstore(docs, collection_name: str):
 
 
 def get_vectorstore(collection_name: str):
-    embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
     return Chroma(
         persist_directory=CHROMA_DIR,
-        embedding_function=embeddings,
+        embedding_function=get_embeddings(),
         collection_name=collection_name,
     )
 
@@ -182,7 +188,7 @@ FAQ_TRIGGERS = re.compile(
 
 
 def tool_summarize(vectorstore) -> str:
-    llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
+    llm = ChatBedrock(model_id="anthropic.claude-3-haiku-20240307-v1:0", region_name=os.getenv("AWS_REGION", "us-east-1"), model_kwargs={"temperature": 0})
     all_docs = vectorstore.get()["documents"]
     # Map: summarize each batch of 10 chunks
     batch_size = 10
@@ -203,7 +209,7 @@ def tool_summarize(vectorstore) -> str:
 
 
 def tool_faq(vectorstore) -> str:
-    llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
+    llm = ChatBedrock(model_id="anthropic.claude-3-haiku-20240307-v1:0", region_name=os.getenv("AWS_REGION", "us-east-1"), model_kwargs={"temperature": 0})
     all_docs = vectorstore.get()["documents"]
     # Take a representative sample of chunks
     sample = "\n\n".join(all_docs[:20])
@@ -214,7 +220,11 @@ def tool_faq(vectorstore) -> str:
 
 
 def build_chain(vectorstore):
-    llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
+    llm = ChatBedrock(
+        model_id="anthropic.claude-3-haiku-20240307-v1:0",
+        region_name=os.getenv("AWS_REGION", "us-east-1"),
+        model_kwargs={"temperature": 0},
+    )
     retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
 
     condense_prompt = ChatPromptTemplate.from_messages([
