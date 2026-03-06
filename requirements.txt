@@ -1,0 +1,10 @@
+streamlit
+langchain-text-splitters
+langchain
+langchain-openai
+langchain-community
+chromadb
+openai
+pypdf
+python-dotenv
+docx2txt

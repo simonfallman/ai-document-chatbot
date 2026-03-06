@@ -1,0 +1,27 @@
+Company: NorthStar Technologies
+Founded: 2018
+Headquarters: Stockholm, Sweden
+CEO: Anna Lindqvist
+Employees: 142
+
+NorthStar Technologies is a software company specializing in cloud-based project management tools for small and medium-sized businesses. Their flagship product, NorthStar Hub, is used by over 8,000 companies across 34 countries.
+
+Products:
+- NorthStar Hub: Project management and team collaboration platform. Pricing starts at $12 per user per month.
+- NorthStar Analytics: Business intelligence dashboard that integrates with Hub. Pricing starts at $29 per month.
+- NorthStar API: Developer API for custom integrations. Free tier available, paid plans from $49 per month.
+
+Recent milestones:
+- January 2025: Reached 1 million registered users
+- March 2025: Launched AI-powered task prioritization feature
+- October 2025: Opened new office in Berlin, Germany
+
+Financial highlights (2025):
+- Annual recurring revenue: $18.4 million
+- Year-over-year growth: 34%
+- Net promoter score: 67
+
+Support:
+- Email: support@northstar.io
+- Phone: +46 8 555 0192 (weekdays 9am–5pm CET)
+- Documentation: docs.northstar.io
