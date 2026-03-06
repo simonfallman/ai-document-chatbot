@@ -388,6 +388,21 @@ with st.sidebar:
     if not conversations:
         st.caption("No conversations yet.")
     else:
+        for conv in conversations:
+            is_active = st.session_state.current_conversation_id == conv["id"]
+            doc_label = conv.get("document") or "Unknown document"
+            label = f"{'▶  ' if is_active else ''}{conv['title']}"
+            if st.button(label, key=f"conv_{conv['id']}", use_container_width=True, help=doc_label):
+                switch_conversation(conv["id"])
+                st.rerun()
+            if is_active:
+                st.caption(f"📎 {doc_label}")
+                if st.button("Delete this conversation", key=f"del_{conv['id']}", use_container_width=True):
+                    delete_conversation(conv["id"])
+                    new_conversation()
+                    st.rerun()
+
+        st.divider()
         if st.button("Delete all conversations", use_container_width=True):
             st.session_state.confirm_delete_all = True
         if st.session_state.get("confirm_delete_all"):
@@ -404,20 +419,6 @@ with st.sidebar:
                 if st.button("Cancel", use_container_width=True):
                     st.session_state.confirm_delete_all = False
                     st.rerun()
-    for conv in conversations:
-        is_active = st.session_state.current_conversation_id == conv["id"]
-        doc_label = conv.get("document") or "Unknown document"
-        label = f"{'▶  ' if is_active else ''}{conv['title']}"
-        if st.button(label, key=f"conv_{conv['id']}", use_container_width=True, help=doc_label):
-            switch_conversation(conv["id"])
-            st.rerun()
-        if is_active:
-            st.caption(f"📎 {doc_label}")
-            if st.button("Delete this conversation", key=f"del_{conv['id']}", use_container_width=True):
-                delete_conversation(conv["id"])
-                new_conversation()
-                st.rerun()
-
 # ── Main chat area ────────────────────────────────────────────────────────────
 active_doc = st.session_state.active_document
 st.title("Chat")
