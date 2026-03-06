@@ -44,6 +44,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
             document TEXT,
+            collection_hash TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         CREATE TABLE IF NOT EXISTS messages (
@@ -55,17 +56,22 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
-    # migrate existing DBs that don't have the document column
+    # migrate existing DBs
     cols = [r[1] for r in con.execute("PRAGMA table_info(conversations)").fetchall()]
     if "document" not in cols:
         con.execute("ALTER TABLE conversations ADD COLUMN document TEXT")
+    if "collection_hash" not in cols:
+        con.execute("ALTER TABLE conversations ADD COLUMN collection_hash TEXT")
     con.commit()
     con.close()
 
 
-def create_conversation(title: str, document: str) -> int:
+def create_conversation(title: str, document: str, collection_hash: str = None) -> int:
     con = sqlite3.connect(DB_PATH)
-    cur = con.execute("INSERT INTO conversations (title, document) VALUES (?, ?)", (title, document))
+    cur = con.execute(
+        "INSERT INTO conversations (title, document, collection_hash) VALUES (?, ?, ?)",
+        (title, document, collection_hash)
+    )
     con.commit()
     cid = cur.lastrowid
     con.close()
@@ -75,10 +81,10 @@ def create_conversation(title: str, document: str) -> int:
 def load_conversations() -> list:
     con = sqlite3.connect(DB_PATH)
     rows = con.execute(
-        "SELECT id, title, document FROM conversations ORDER BY created_at DESC"
+        "SELECT id, title, document, collection_hash FROM conversations ORDER BY created_at DESC"
     ).fetchall()
     con.close()
-    return [{"id": r[0], "title": r[1], "document": r[2]} for r in rows]
+    return [{"id": r[0], "title": r[1], "document": r[2], "collection_hash": r[3]} for r in rows]
 
 
 def delete_conversation(cid: int):
@@ -274,7 +280,8 @@ def build_chain(vectorstore):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def switch_conversation(cid: int):
+def switch_conversation(conv: dict):
+    cid = conv["id"]
     msgs = load_messages(cid)
     history = ChatMessageHistory()
     for msg in msgs:
@@ -285,6 +292,18 @@ def switch_conversation(cid: int):
     st.session_state.current_conversation_id = cid
     st.session_state.messages = msgs
     st.session_state.chat_history = history
+
+    # Reload vectorstore for this conversation's document
+    chash = conv.get("collection_hash")
+    if chash:
+        vectorstore = get_vectorstore(collection_name=chash)
+        st.session_state.active_collection = chash
+        st.session_state.active_document = conv.get("document")
+        st.session_state.chain = build_chain(vectorstore)
+    else:
+        st.session_state.active_collection = None
+        st.session_state.active_document = conv.get("document")
+        st.session_state.chain = None
 
 
 def new_conversation():
@@ -403,7 +422,7 @@ with st.sidebar:
             doc_label = conv.get("document") or "Unknown document"
             label = f"{'▶  ' if is_active else ''}{conv['title']}"
             if st.button(label, key=f"conv_{conv['id']}", use_container_width=True, help=doc_label):
-                switch_conversation(conv["id"])
+                switch_conversation(conv)
                 st.rerun()
             if is_active:
                 st.caption(f"📎 {doc_label}")
@@ -464,7 +483,7 @@ if prompt := (prompt_value or st.chat_input(placeholder_text)):
         # Create a new conversation on first message
         if st.session_state.current_conversation_id is None:
             title = prompt[:60] + ("..." if len(prompt) > 60 else "")
-            cid = create_conversation(title, st.session_state.active_document)
+            cid = create_conversation(title, st.session_state.active_document, st.session_state.get("active_collection"))
             st.session_state.current_conversation_id = cid
 
         cid = st.session_state.current_conversation_id
