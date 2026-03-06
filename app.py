@@ -11,10 +11,9 @@ from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.vectorstores import Chroma
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.runnables import RunnablePassthrough, RunnableLambda
+from langchain_core.runnables import RunnableLambda
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.documents import Document as LCDocument
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 try:
     from langchain_community.document_loaders import Docx2txtLoader
@@ -34,34 +33,71 @@ Path(DOCUMENTS_DIR).mkdir(exist_ok=True)
 Path(CHROMA_DIR).mkdir(exist_ok=True)
 
 
+# ── Database ──────────────────────────────────────────────────────────────────
+
 def init_db():
     con = sqlite3.connect(DB_PATH)
-    con.execute("""
+    con.executescript("""
+        CREATE TABLE IF NOT EXISTS conversations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
         CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id INTEGER NOT NULL REFERENCES conversations(id),
             role TEXT NOT NULL,
             content TEXT NOT NULL,
             sources TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
+        );
     """)
     con.commit()
     con.close()
 
 
-def save_message(role: str, content: str, sources: list = None):
+def create_conversation(title: str) -> int:
+    con = sqlite3.connect(DB_PATH)
+    cur = con.execute("INSERT INTO conversations (title) VALUES (?)", (title,))
+    con.commit()
+    cid = cur.lastrowid
+    con.close()
+    return cid
+
+
+def load_conversations() -> list:
+    con = sqlite3.connect(DB_PATH)
+    rows = con.execute(
+        "SELECT id, title FROM conversations ORDER BY created_at DESC"
+    ).fetchall()
+    con.close()
+    return [{"id": r[0], "title": r[1]} for r in rows]
+
+
+def delete_conversation(cid: int):
+    con = sqlite3.connect(DB_PATH)
+    con.execute("DELETE FROM messages WHERE conversation_id = ?", (cid,))
+    con.execute("DELETE FROM conversations WHERE id = ?", (cid,))
+    con.commit()
+    con.close()
+
+
+def save_message(cid: int, role: str, content: str, sources: list = None):
     con = sqlite3.connect(DB_PATH)
     con.execute(
-        "INSERT INTO messages (role, content, sources) VALUES (?, ?, ?)",
-        (role, content, json.dumps(sources) if sources else None)
+        "INSERT INTO messages (conversation_id, role, content, sources) VALUES (?, ?, ?, ?)",
+        (cid, role, content, json.dumps(sources) if sources else None)
     )
     con.commit()
     con.close()
 
 
-def load_messages() -> list:
+def load_messages(cid: int) -> list:
     con = sqlite3.connect(DB_PATH)
-    rows = con.execute("SELECT role, content, sources FROM messages ORDER BY id").fetchall()
+    rows = con.execute(
+        "SELECT role, content, sources FROM messages WHERE conversation_id = ? ORDER BY id",
+        (cid,)
+    ).fetchall()
     con.close()
     return [
         {"role": r, "content": c, "sources": json.loads(s) if s else None}
@@ -71,6 +107,8 @@ def load_messages() -> list:
 
 init_db()
 
+
+# ── RAG pipeline ──────────────────────────────────────────────────────────────
 
 def file_hash(data: bytes) -> str:
     return hashlib.md5(data).hexdigest()
@@ -102,10 +140,7 @@ def build_vectorstore(docs):
     splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
     chunks = splitter.split_documents(docs)
     embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
-    vectorstore = Chroma(
-        persist_directory=CHROMA_DIR,
-        embedding_function=embeddings,
-    )
+    vectorstore = Chroma(persist_directory=CHROMA_DIR, embedding_function=embeddings)
     vectorstore.add_documents(chunks)
     return vectorstore
 
@@ -123,7 +158,6 @@ def build_chain(vectorstore):
     llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
     retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
 
-    # Step 1: condense question + history into a standalone question
     condense_prompt = ChatPromptTemplate.from_messages([
         MessagesPlaceholder("chat_history"),
         ("human", "{input}"),
@@ -131,7 +165,6 @@ def build_chain(vectorstore):
     ])
     condense_chain = condense_prompt | llm | StrOutputParser()
 
-    # Step 2: retrieve + answer
     qa_prompt = ChatPromptTemplate.from_messages([
         ("system", "Answer the user's question using only the context below.\n\n{context}"),
         MessagesPlaceholder("chat_history"),
@@ -141,39 +174,58 @@ def build_chain(vectorstore):
     def retrieve_and_answer(inp):
         standalone = condense_chain.invoke(inp) if inp.get("chat_history") else inp["input"]
         docs = retriever.invoke(standalone)
-        context = format_docs(docs)
         answer = (qa_prompt | llm | StrOutputParser()).invoke({
-            "context": context,
+            "context": format_docs(docs),
             "chat_history": inp.get("chat_history", []),
             "input": inp["input"],
         })
         return {"answer": answer, "context": docs}
 
-    chain = RunnableWithMessageHistory(
+    return RunnableWithMessageHistory(
         RunnableLambda(retrieve_and_answer),
         lambda session_id: st.session_state.chat_history,
         input_messages_key="input",
         history_messages_key="chat_history",
         output_messages_key="answer",
     )
-    return chain
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def switch_conversation(cid: int):
+    msgs = load_messages(cid)
+    history = ChatMessageHistory()
+    for msg in msgs:
+        if msg["role"] == "user":
+            history.add_user_message(msg["content"])
+        else:
+            history.add_ai_message(msg["content"])
+    st.session_state.current_conversation_id = cid
+    st.session_state.messages = msgs
+    st.session_state.chat_history = history
+
+
+def new_conversation():
+    st.session_state.current_conversation_id = None
+    st.session_state.messages = []
+    st.session_state.chat_history = ChatMessageHistory()
 
 
 # ── UI ────────────────────────────────────────────────────────────────────────
 
-st.set_page_config(page_title="AI Document Chatbot", page_icon="📄")
-st.title("📄 AI Document Chatbot")
+st.set_page_config(page_title="AI Document Chatbot", page_icon="📄", layout="wide")
 
 if not os.getenv("OPENAI_API_KEY"):
     st.error("OPENAI_API_KEY is not set. Create a .env file with your key.")
     st.stop()
 
-# ── Password protection ───────────────────────────────────────────────────────
+# Password protection
 APP_PASSWORD = os.getenv("APP_PASSWORD")
 if APP_PASSWORD:
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
     if not st.session_state.authenticated:
+        st.title("📄 AI Document Chatbot")
         pwd = st.text_input("Enter password", type="password")
         if st.button("Login"):
             if pwd == APP_PASSWORD:
@@ -183,29 +235,35 @@ if APP_PASSWORD:
                 st.error("Incorrect password.")
         st.stop()
 
-# Session state
+# Session state defaults
 if "chain" not in st.session_state:
     st.session_state.chain = None
 if "messages" not in st.session_state:
-    st.session_state.messages = load_messages()
+    st.session_state.messages = []
 if "chat_history" not in st.session_state:
-    history = ChatMessageHistory()
-    for msg in st.session_state.messages:
-        if msg["role"] == "user":
-            history.add_user_message(msg["content"])
-        else:
-            history.add_ai_message(msg["content"])
-    st.session_state.chat_history = history
+    st.session_state.chat_history = ChatMessageHistory()
+if "current_conversation_id" not in st.session_state:
+    st.session_state.current_conversation_id = None
 
-# Sidebar – file upload
+# ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.header("Upload Document")
+    st.title("📄 AI Document Chatbot")
+
+    # New chat button
+    if st.button("＋  New chat", use_container_width=True):
+        new_conversation()
+        st.rerun()
+
+    st.divider()
+
+    # Document upload
+    st.subheader("Upload Document")
     supported = ["pdf", "txt"] + (["docx"] if DOCX_SUPPORTED else [])
     uploaded = st.file_uploader(f"Supported: {', '.join(supported)}", type=supported)
 
     if uploaded:
         if uploaded.size > MAX_FILE_SIZE:
-            st.error("File too large. Please upload a file under 5MB.")
+            st.error("File too large. Max 5MB.")
         else:
             file_bytes = uploaded.read()
             fhash = file_hash(file_bytes)
@@ -214,7 +272,6 @@ with st.sidebar:
             if fhash not in indexed:
                 save_path = Path(DOCUMENTS_DIR) / uploaded.name
                 save_path.write_bytes(file_bytes)
-
                 with st.spinner("Processing document..."):
                     suffix = Path(uploaded.name).suffix.lower()
                     docs = load_document(str(save_path), suffix)
@@ -225,8 +282,6 @@ with st.sidebar:
                         indexed[fhash] = uploaded.name
                         save_indexed_hashes(indexed)
                         st.session_state.chain = build_chain(vectorstore)
-                        st.session_state.messages = []
-                        st.session_state.chat_history = ChatMessageHistory()
                         st.success(f"Indexed: {uploaded.name}")
             else:
                 if st.session_state.chain is None:
@@ -234,7 +289,31 @@ with st.sidebar:
                     st.session_state.chain = build_chain(vectorstore)
                 st.info(f"Already indexed: {indexed[fhash]}")
 
-# Chat area
+    st.divider()
+
+    # Conversation history list
+    st.subheader("Conversations")
+    conversations = load_conversations()
+    if not conversations:
+        st.caption("No conversations yet.")
+    for conv in conversations:
+        col1, col2 = st.columns([5, 1])
+        is_active = st.session_state.current_conversation_id == conv["id"]
+        label = f"**{conv['title']}**" if is_active else conv["title"]
+        with col1:
+            if st.button(label, key=f"conv_{conv['id']}", use_container_width=True):
+                switch_conversation(conv["id"])
+                st.rerun()
+        with col2:
+            if st.button("🗑", key=f"del_{conv['id']}"):
+                delete_conversation(conv["id"])
+                if st.session_state.current_conversation_id == conv["id"]:
+                    new_conversation()
+                st.rerun()
+
+# ── Main chat area ────────────────────────────────────────────────────────────
+st.title("Chat")
+
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
@@ -249,8 +328,15 @@ if prompt := st.chat_input("Ask a question about your document..."):
     if st.session_state.chain is None:
         st.warning("Please upload a document first.")
     else:
+        # Create a new conversation on first message
+        if st.session_state.current_conversation_id is None:
+            title = prompt[:60] + ("..." if len(prompt) > 60 else "")
+            cid = create_conversation(title)
+            st.session_state.current_conversation_id = cid
+
+        cid = st.session_state.current_conversation_id
+        save_message(cid, "user", prompt)
         st.session_state.messages.append({"role": "user", "content": prompt})
-        save_message("user", prompt)
         with st.chat_message("user"):
             st.markdown(prompt)
 
@@ -271,7 +357,7 @@ if prompt := st.chat_input("Ask a question about your document..."):
                         label = f"{label} — page {int(page) + 1}" if label else f"Page {int(page) + 1}"
                     sources.append({"text": doc.page_content[:200], "label": label})
 
-            # Stream the answer word by word
+            # Stream answer word by word
             placeholder = st.empty()
             displayed = ""
             for word in answer.split(" "):
@@ -286,8 +372,7 @@ if prompt := st.chat_input("Ask a question about your document..."):
                             st.caption(f"**{src['label']}**")
                         st.caption(src["text"])
 
-        save_message("assistant", answer, sources)
+        save_message(cid, "assistant", answer, sources)
         st.session_state.messages.append(
             {"role": "assistant", "content": answer, "sources": sources}
         )
-
