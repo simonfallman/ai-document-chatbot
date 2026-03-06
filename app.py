@@ -318,7 +318,7 @@ with st.sidebar:
     if not conversations:
         st.caption("No conversations yet.")
     for conv in conversations:
-        col1, col2 = st.columns([5, 1])
+        col1, col2 = st.columns([5, 1], vertical_alignment="center")
         is_active = st.session_state.current_conversation_id == conv["id"]
         label = f"**{conv['title']}**" if is_active else conv["title"]
         doc_label = conv.get("document") or "Unknown document"
