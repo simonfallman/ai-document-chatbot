@@ -320,14 +320,14 @@ with st.sidebar:
     for conv in conversations:
         is_active = st.session_state.current_conversation_id == conv["id"]
         doc_label = conv.get("document") or "Unknown document"
-        label = f"{'▶ ' if is_active else ''}{conv['title']}"
-        col1, col2 = st.columns([5, 1])
+        label = f"{'▶  ' if is_active else ''}{conv['title']}"
+        col1, col2 = st.columns([6, 1])
         with col1:
             if st.button(label, key=f"conv_{conv['id']}", use_container_width=True, help=doc_label):
                 switch_conversation(conv["id"])
                 st.rerun()
         with col2:
-            if st.button("✕", key=f"del_{conv['id']}", use_container_width=True):
+            if st.button("x", key=f"del_{conv['id']}", use_container_width=True):
                 delete_conversation(conv["id"])
                 if st.session_state.current_conversation_id == conv["id"]:
                     new_conversation()
