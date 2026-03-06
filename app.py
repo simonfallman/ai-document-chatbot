@@ -2,7 +2,6 @@ import os
 import hashlib
 import json
 import sqlite3
-import math
 import re
 from pathlib import Path
 
@@ -176,8 +175,8 @@ SUMMARIZE_TRIGGERS = re.compile(
     re.IGNORECASE,
 )
 
-CALC_TRIGGERS = re.compile(
-    r"\b(calculate|compute|what is|how much is|eval)\b.*[\d\+\-\*\/\(\)\.\%]",
+FAQ_TRIGGERS = re.compile(
+    r"\b(faq|frequently asked|generate questions|what are the (key |common )?questions|quiz me)\b",
     re.IGNORECASE,
 )
 
@@ -203,19 +202,15 @@ def tool_summarize(vectorstore) -> str:
     ).content
 
 
-def tool_calculate(expression: str) -> str:
-    try:
-        # Extract the math expression from the input
-        llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
-        math_expr = llm.invoke(
-            f"Extract only the mathematical expression from this text and return nothing else: {expression}"
-        ).content.strip()
-        # Safe eval using only math operations
-        allowed = {k: getattr(math, k) for k in dir(math) if not k.startswith("_")}
-        result = eval(math_expr, {"__builtins__": {}}, allowed)  # noqa: S307
-        return f"{math_expr} = {result}"
-    except Exception as e:
-        return f"Could not calculate: {e}"
+def tool_faq(vectorstore) -> str:
+    llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
+    all_docs = vectorstore.get()["documents"]
+    # Take a representative sample of chunks
+    sample = "\n\n".join(all_docs[:20])
+    return llm.invoke(
+        f"Based on the following document content, generate 5 frequently asked questions "
+        f"and their answers. Format as:\n\nQ: ...\nA: ...\n\n{sample}"
+    ).content
 
 
 def build_chain(vectorstore):
@@ -243,9 +238,9 @@ def build_chain(vectorstore):
             answer = tool_summarize(vectorstore)
             return {"answer": answer, "context": []}
 
-        # Tool: calculator
-        if CALC_TRIGGERS.search(question):
-            answer = tool_calculate(question)
+        # Tool: FAQ
+        if FAQ_TRIGGERS.search(question):
+            answer = tool_faq(vectorstore)
             return {"answer": answer, "context": []}
 
         # Default: RAG
@@ -381,9 +376,9 @@ with st.sidebar:
         st.markdown("**Summarize**")
         st.caption("Trigger: 'summarize', 'overview', 'tldr'")
         st.caption("Fetches all document chunks and generates a structured summary using map-reduce.")
-        st.markdown("**Calculator**")
-        st.caption("Trigger: 'calculate', 'what is X% of Y', math expressions")
-        st.caption("Extracts the math expression and evaluates it in Python for accurate results.")
+        st.markdown("**FAQ Generator**")
+        st.caption("Trigger: 'faq', 'generate questions', 'quiz me'")
+        st.caption("Generates 5 frequently asked questions and answers based on the document content.")
 
     st.divider()
 
@@ -429,8 +424,8 @@ if st.session_state.chain is not None:
         if st.button("📋 Summarize document", use_container_width=True):
             st.session_state.quick_prompt = "Summarize this document"
     with col2:
-        if st.button("🧮 Calculator", use_container_width=True):
-            st.session_state.quick_prompt = "calculate "
+        if st.button("❓ Generate FAQ", use_container_width=True):
+            st.session_state.quick_prompt = "Generate FAQ"
 
 prompt_value = st.session_state.pop("quick_prompt", None)
 placeholder_text = f"Ask a question about {active_doc}..." if active_doc else "Upload a document to start chatting..."
