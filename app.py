@@ -227,10 +227,6 @@ with st.sidebar:
                         st.session_state.chain = build_chain(vectorstore)
                         st.session_state.messages = []
                         st.session_state.chat_history = ChatMessageHistory()
-                        con = sqlite3.connect(DB_PATH)
-                        con.execute("DELETE FROM messages")
-                        con.commit()
-                        con.close()
                         st.success(f"Indexed: {uploaded.name}")
             else:
                 if st.session_state.chain is None:
