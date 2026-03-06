@@ -319,15 +319,15 @@ with st.sidebar:
         st.caption("No conversations yet.")
     for conv in conversations:
         is_active = st.session_state.current_conversation_id == conv["id"]
-        label = f"**{conv['title']}**" if is_active else conv["title"]
         doc_label = conv.get("document") or "Unknown document"
-        col1, col2 = st.columns([5, 1], vertical_alignment="center")
+        label = f"{'▶ ' if is_active else ''}{conv['title']}"
+        col1, col2 = st.columns([5, 1])
         with col1:
             if st.button(label, key=f"conv_{conv['id']}", use_container_width=True, help=doc_label):
                 switch_conversation(conv["id"])
                 st.rerun()
         with col2:
-            if st.button("✕", key=f"del_{conv['id']}"):
+            if st.button("✕", key=f"del_{conv['id']}", use_container_width=True):
                 delete_conversation(conv["id"])
                 if st.session_state.current_conversation_id == conv["id"]:
                     new_conversation()
@@ -337,16 +337,6 @@ with st.sidebar:
 
 # ── Main chat area ────────────────────────────────────────────────────────────
 active_doc = st.session_state.active_document
-st.markdown("""
-<style>
-div[data-testid="column"]:last-child div[data-testid="stVerticalBlock"] {
-    justify-content: center;
-    display: flex;
-    flex-direction: column;
-}
-</style>
-""", unsafe_allow_html=True)
-
 st.title("Chat")
 if active_doc:
     st.caption(f"📎 {active_doc}")
