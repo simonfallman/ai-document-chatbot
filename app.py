@@ -1,6 +1,7 @@
 import os
 import hashlib
 import json
+import sqlite3
 from pathlib import Path
 
 import streamlit as st
@@ -26,10 +27,49 @@ load_dotenv()
 CHROMA_DIR = "./chroma_db"
 DOCUMENTS_DIR = "./documents"
 HASH_STORE = "./chroma_db/indexed_files.json"
+DB_PATH = "./chroma_db/chat_history.db"
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 
 Path(DOCUMENTS_DIR).mkdir(exist_ok=True)
 Path(CHROMA_DIR).mkdir(exist_ok=True)
+
+
+def init_db():
+    con = sqlite3.connect(DB_PATH)
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            sources TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    con.commit()
+    con.close()
+
+
+def save_message(role: str, content: str, sources: list = None):
+    con = sqlite3.connect(DB_PATH)
+    con.execute(
+        "INSERT INTO messages (role, content, sources) VALUES (?, ?, ?)",
+        (role, content, json.dumps(sources) if sources else None)
+    )
+    con.commit()
+    con.close()
+
+
+def load_messages() -> list:
+    con = sqlite3.connect(DB_PATH)
+    rows = con.execute("SELECT role, content, sources FROM messages ORDER BY id").fetchall()
+    con.close()
+    return [
+        {"role": r, "content": c, "sources": json.loads(s) if s else None}
+        for r, c, s in rows
+    ]
+
+
+init_db()
 
 
 def file_hash(data: bytes) -> str:
@@ -147,9 +187,15 @@ if APP_PASSWORD:
 if "chain" not in st.session_state:
     st.session_state.chain = None
 if "messages" not in st.session_state:
-    st.session_state.messages = []
+    st.session_state.messages = load_messages()
 if "chat_history" not in st.session_state:
-    st.session_state.chat_history = ChatMessageHistory()
+    history = ChatMessageHistory()
+    for msg in st.session_state.messages:
+        if msg["role"] == "user":
+            history.add_user_message(msg["content"])
+        else:
+            history.add_ai_message(msg["content"])
+    st.session_state.chat_history = history
 
 # Sidebar – file upload
 with st.sidebar:
@@ -181,6 +227,10 @@ with st.sidebar:
                         st.session_state.chain = build_chain(vectorstore)
                         st.session_state.messages = []
                         st.session_state.chat_history = ChatMessageHistory()
+                        con = sqlite3.connect(DB_PATH)
+                        con.execute("DELETE FROM messages")
+                        con.commit()
+                        con.close()
                         st.success(f"Indexed: {uploaded.name}")
             else:
                 if st.session_state.chain is None:
@@ -204,6 +254,7 @@ if prompt := st.chat_input("Ask a question about your document..."):
         st.warning("Please upload a document first.")
     else:
         st.session_state.messages.append({"role": "user", "content": prompt})
+        save_message("user", prompt)
         with st.chat_message("user"):
             st.markdown(prompt)
 
@@ -239,6 +290,7 @@ if prompt := st.chat_input("Ask a question about your document..."):
                             st.caption(f"**{src['label']}**")
                         st.caption(src["text"])
 
+        save_message("assistant", answer, sources)
         st.session_state.messages.append(
             {"role": "assistant", "content": answer, "sources": sources}
         )
