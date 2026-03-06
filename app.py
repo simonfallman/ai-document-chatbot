@@ -337,6 +337,16 @@ with st.sidebar:
 
 # ── Main chat area ────────────────────────────────────────────────────────────
 active_doc = st.session_state.active_document
+st.markdown("""
+<style>
+div[data-testid="column"]:last-child div[data-testid="stVerticalBlock"] {
+    justify-content: center;
+    display: flex;
+    flex-direction: column;
+}
+</style>
+""", unsafe_allow_html=True)
+
 st.title("Chat")
 if active_doc:
     st.caption(f"📎 {active_doc}")
