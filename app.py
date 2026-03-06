@@ -188,7 +188,7 @@ FAQ_TRIGGERS = re.compile(
 
 
 def tool_summarize(vectorstore) -> str:
-    llm = ChatBedrock(model_id="anthropic.claude-3-haiku-20240307-v1:0", region_name=os.getenv("AWS_REGION", "us-east-1"), model_kwargs={"temperature": 0})
+    llm = ChatBedrock(model_id="meta.llama3-8b-instruct-v1:0", region_name=os.getenv("AWS_REGION", "us-east-1"), model_kwargs={"temperature": 0})
     all_docs = vectorstore.get()["documents"]
     # Map: summarize each batch of 10 chunks
     batch_size = 10
@@ -209,7 +209,7 @@ def tool_summarize(vectorstore) -> str:
 
 
 def tool_faq(vectorstore) -> str:
-    llm = ChatBedrock(model_id="anthropic.claude-3-haiku-20240307-v1:0", region_name=os.getenv("AWS_REGION", "us-east-1"), model_kwargs={"temperature": 0})
+    llm = ChatBedrock(model_id="meta.llama3-8b-instruct-v1:0", region_name=os.getenv("AWS_REGION", "us-east-1"), model_kwargs={"temperature": 0})
     all_docs = vectorstore.get()["documents"]
     # Take a representative sample of chunks
     sample = "\n\n".join(all_docs[:20])
@@ -221,7 +221,7 @@ def tool_faq(vectorstore) -> str:
 
 def build_chain(vectorstore):
     llm = ChatBedrock(
-        model_id="anthropic.claude-3-haiku-20240307-v1:0",
+        model_id="meta.llama3-8b-instruct-v1:0",
         region_name=os.getenv("AWS_REGION", "us-east-1"),
         model_kwargs={"temperature": 0},
     )
