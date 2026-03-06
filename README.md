@@ -1,6 +1,6 @@
 # AI Document Chatbot
 
-A RAG-based chatbot that lets you upload a document and ask questions about its content.
+A RAG-based chatbot that lets you upload a document and ask questions about its content. Built with Python, LangChain, OpenAI, and ChromaDB.
 
 ## Stack
 
@@ -8,8 +8,22 @@ A RAG-based chatbot that lets you upload a document and ask questions about its 
 - **LangChain** — RAG orchestration
 - **OpenAI** — embeddings (`text-embedding-3-small`) + chat (`gpt-3.5-turbo`)
 - **ChromaDB** — vector store, persisted to disk
+- **SQLite** — persistent chat history
+- **Docker** — containerization
+- **GitHub Actions** — CI/CD pipeline
 
-## Setup
+## Features
+
+- Upload PDF, TXT, or DOCX files (max 5MB)
+- Semantic search over document content
+- Conversational memory — follow-up questions work correctly
+- Persistent chat history with conversation sidebar
+- Per-document vector isolation — no cross-contamination between files
+- Streaming responses
+- Password protection (optional)
+- **Tools:** document summarization (map-reduce) and FAQ generation
+
+## Local Setup
 
 **1. Install dependencies**
 ```bash
@@ -20,7 +34,7 @@ pip install -r requirements.txt
 ```bash
 cp .env.example .env
 ```
-Edit `.env` and set your `OPENAI_API_KEY`.
+Edit `.env` and set your `OPENAI_API_KEY`. Optionally set `APP_PASSWORD` to enable password protection.
 
 **3. Run**
 ```bash
@@ -29,29 +43,22 @@ streamlit run app.py
 
 Open [http://localhost:8501](http://localhost:8501) in your browser.
 
-## Usage
-
-1. Upload a PDF, TXT, or DOCX file (max 5MB) using the sidebar
-2. Wait for the document to be indexed (only happens once per file)
-3. Ask questions in the chat input
-4. Expand **Sources** under any answer to see the retrieved chunks
-
 ## Docker
 
 ```bash
 docker build -t ai-document-chatbot .
-docker run -d -p 8501:8501 \
-  -v $(pwd)/chroma_db:/app/chroma_db \
-  --env-file .env \
-  --restart unless-stopped \
-  ai-document-chatbot
+docker run -d -p 8501:8501 -v $(pwd)/chroma_db:/app/chroma_db --env-file .env --restart unless-stopped ai-document-chatbot
 ```
 
-- `-d` runs the container in the background
-- `--restart unless-stopped` ensures the app restarts automatically after a server reboot
-- The `chroma_db` volume mount ensures indexed documents survive container restarts
+The `-v` flag mounts `chroma_db` from the host so indexed documents and chat history survive container restarts.
 
 **Access the app** at `http://<your-server-ip>:8501`
+
+## CI/CD
+
+Every push to `main` triggers a GitHub Actions pipeline that:
+1. Runs the test suite
+2. SSHs into the server and redeploys if tests pass
 
 ## Configuration
 
@@ -66,5 +73,5 @@ docker run -d -p 8501:8501 \
 ## Running Tests
 
 ```bash
-python3 -m pytest test_pipeline.py
+python3 -m pytest test_pipeline.py -v
 ```
