@@ -1,0 +1,38 @@
+name: Test & Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt pytest
+
+      - name: Run tests
+        run: pytest test_pipeline.py -v
+
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1
+        with:
+          host: 89.167.107.181
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /root/ai-document-chatbot
+            git pull
+            docker stop $(docker ps -q) || true
+            docker build -t ai-document-chatbot .
+            docker run -d -p 8501:8501 -v $(pwd)/chroma_db:/app/chroma_db --env-file .env --restart unless-stopped ai-document-chatbot
