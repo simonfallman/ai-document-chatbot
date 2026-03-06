@@ -326,8 +326,7 @@ with st.sidebar:
             if st.button(label, key=f"conv_{conv['id']}", use_container_width=True, help=doc_label):
                 switch_conversation(conv["id"])
                 st.rerun()
-            if is_active:
-                st.caption(f"📎 {doc_label}")
+            st.caption(f"📎 {doc_label}" if is_active else " ")
         with col2:
             if st.button("🗑", key=f"del_{conv['id']}"):
                 delete_conversation(conv["id"])
