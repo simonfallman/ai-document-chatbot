@@ -376,6 +376,17 @@ with st.sidebar:
 
     st.divider()
 
+    # Tools panel
+    with st.expander("🛠 Tools"):
+        st.markdown("**Summarize**")
+        st.caption("Trigger: 'summarize', 'overview', 'tldr'")
+        st.caption("Fetches all document chunks and generates a structured summary using map-reduce.")
+        st.markdown("**Calculator**")
+        st.caption("Trigger: 'calculate', 'what is X% of Y', math expressions")
+        st.caption("Extracts the math expression and evaluates it in Python for accurate results.")
+
+    st.divider()
+
     # Conversation history list
     st.subheader("Conversations")
     conversations = load_conversations()
@@ -411,8 +422,19 @@ for msg in st.session_state.messages:
                         st.caption(f"**{src['label']}**")
                     st.caption(src["text"])
 
+# Quick action buttons
+if st.session_state.chain is not None:
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("📋 Summarize document", use_container_width=True):
+            st.session_state.quick_prompt = "Summarize this document"
+    with col2:
+        if st.button("🧮 Calculator", use_container_width=True):
+            st.session_state.quick_prompt = "calculate "
+
+prompt_value = st.session_state.pop("quick_prompt", None)
 placeholder_text = f"Ask a question about {active_doc}..." if active_doc else "Upload a document to start chatting..."
-if prompt := st.chat_input(placeholder_text):
+if prompt := (prompt_value or st.chat_input(placeholder_text)):
     if st.session_state.chain is None:
         st.warning("Please upload a document first.")
     else:
