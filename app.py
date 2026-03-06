@@ -41,6 +41,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS conversations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
+            document TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         CREATE TABLE IF NOT EXISTS messages (
@@ -52,13 +53,17 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
+    # migrate existing DBs that don't have the document column
+    cols = [r[1] for r in con.execute("PRAGMA table_info(conversations)").fetchall()]
+    if "document" not in cols:
+        con.execute("ALTER TABLE conversations ADD COLUMN document TEXT")
     con.commit()
     con.close()
 
 
-def create_conversation(title: str) -> int:
+def create_conversation(title: str, document: str) -> int:
     con = sqlite3.connect(DB_PATH)
-    cur = con.execute("INSERT INTO conversations (title) VALUES (?)", (title,))
+    cur = con.execute("INSERT INTO conversations (title, document) VALUES (?, ?)", (title, document))
     con.commit()
     cid = cur.lastrowid
     con.close()
@@ -68,10 +73,10 @@ def create_conversation(title: str) -> int:
 def load_conversations() -> list:
     con = sqlite3.connect(DB_PATH)
     rows = con.execute(
-        "SELECT id, title FROM conversations ORDER BY created_at DESC"
+        "SELECT id, title, document FROM conversations ORDER BY created_at DESC"
     ).fetchall()
     con.close()
-    return [{"id": r[0], "title": r[1]} for r in rows]
+    return [{"id": r[0], "title": r[1], "document": r[2]} for r in rows]
 
 
 def delete_conversation(cid: int):
@@ -254,6 +259,8 @@ if "chat_history" not in st.session_state:
     st.session_state.chat_history = ChatMessageHistory()
 if "current_conversation_id" not in st.session_state:
     st.session_state.current_conversation_id = None
+if "active_document" not in st.session_state:
+    st.session_state.active_document = None
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -292,12 +299,14 @@ with st.sidebar:
                         indexed[fhash] = uploaded.name
                         save_indexed_hashes(indexed)
                         st.session_state.active_collection = fhash
+                        st.session_state.active_document = uploaded.name
                         st.session_state.chain = build_chain(vectorstore)
                         st.success(f"Indexed: {uploaded.name}")
             else:
                 if st.session_state.chain is None or st.session_state.get("active_collection") != fhash:
                     vectorstore = get_vectorstore(collection_name=fhash)
                     st.session_state.active_collection = fhash
+                    st.session_state.active_document = indexed[fhash]
                     st.session_state.chain = build_chain(vectorstore)
                 st.info(f"Already indexed: {indexed[fhash]}")
 
@@ -312,10 +321,13 @@ with st.sidebar:
         col1, col2 = st.columns([5, 1])
         is_active = st.session_state.current_conversation_id == conv["id"]
         label = f"**{conv['title']}**" if is_active else conv["title"]
+        doc_label = conv.get("document") or "Unknown document"
         with col1:
-            if st.button(label, key=f"conv_{conv['id']}", use_container_width=True):
+            if st.button(label, key=f"conv_{conv['id']}", use_container_width=True, help=doc_label):
                 switch_conversation(conv["id"])
                 st.rerun()
+            if is_active:
+                st.caption(f"📎 {doc_label}")
         with col2:
             if st.button("🗑", key=f"del_{conv['id']}"):
                 delete_conversation(conv["id"])
@@ -324,7 +336,10 @@ with st.sidebar:
                 st.rerun()
 
 # ── Main chat area ────────────────────────────────────────────────────────────
+active_doc = st.session_state.active_document
 st.title("Chat")
+if active_doc:
+    st.caption(f"📎 {active_doc}")
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
@@ -336,14 +351,15 @@ for msg in st.session_state.messages:
                         st.caption(f"**{src['label']}**")
                     st.caption(src["text"])
 
-if prompt := st.chat_input("Ask a question about your document..."):
+placeholder_text = f"Ask a question about {active_doc}..." if active_doc else "Upload a document to start chatting..."
+if prompt := st.chat_input(placeholder_text):
     if st.session_state.chain is None:
         st.warning("Please upload a document first.")
     else:
         # Create a new conversation on first message
         if st.session_state.current_conversation_id is None:
             title = prompt[:60] + ("..." if len(prompt) > 60 else "")
-            cid = create_conversation(title)
+            cid = create_conversation(title, st.session_state.active_document)
             st.session_state.current_conversation_id = cid
 
         cid = st.session_state.current_conversation_id
