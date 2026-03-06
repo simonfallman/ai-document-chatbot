@@ -388,7 +388,7 @@ with st.sidebar:
     if not conversations:
         st.caption("No conversations yet.")
     else:
-        if st.button("🗑 Delete all", use_container_width=True):
+        if st.button("Delete all conversations", use_container_width=True):
             st.session_state.confirm_delete_all = True
         if st.session_state.get("confirm_delete_all"):
             st.warning("Are you sure? This cannot be undone.")
