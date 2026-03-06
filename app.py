@@ -2,6 +2,8 @@ import os
 import hashlib
 import json
 import sqlite3
+import math
+import re
 from pathlib import Path
 
 import streamlit as st
@@ -167,6 +169,55 @@ def format_docs(docs):
     return "\n\n".join(doc.page_content for doc in docs)
 
 
+# ── Tools ─────────────────────────────────────────────────────────────────────
+
+SUMMARIZE_TRIGGERS = re.compile(
+    r"\b(summarize|summary|summarise|overview|tldr|tl;dr|what is this (document|file) about)\b",
+    re.IGNORECASE,
+)
+
+CALC_TRIGGERS = re.compile(
+    r"\b(calculate|compute|what is|how much is|eval)\b.*[\d\+\-\*\/\(\)\.\%]",
+    re.IGNORECASE,
+)
+
+
+def tool_summarize(vectorstore) -> str:
+    llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
+    all_docs = vectorstore.get()["documents"]
+    # Map: summarize each batch of 10 chunks
+    batch_size = 10
+    batch_summaries = []
+    for i in range(0, len(all_docs), batch_size):
+        batch = "\n\n".join(all_docs[i:i + batch_size])
+        summary = llm.invoke(
+            f"Summarize the following text concisely:\n\n{batch}"
+        ).content
+        batch_summaries.append(summary)
+    # Reduce: summarize the summaries
+    if len(batch_summaries) == 1:
+        return batch_summaries[0]
+    combined = "\n\n".join(batch_summaries)
+    return llm.invoke(
+        f"Combine these partial summaries into one coherent summary:\n\n{combined}"
+    ).content
+
+
+def tool_calculate(expression: str) -> str:
+    try:
+        # Extract the math expression from the input
+        llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
+        math_expr = llm.invoke(
+            f"Extract only the mathematical expression from this text and return nothing else: {expression}"
+        ).content.strip()
+        # Safe eval using only math operations
+        allowed = {k: getattr(math, k) for k in dir(math) if not k.startswith("_")}
+        result = eval(math_expr, {"__builtins__": {}}, allowed)  # noqa: S307
+        return f"{math_expr} = {result}"
+    except Exception as e:
+        return f"Could not calculate: {e}"
+
+
 def build_chain(vectorstore):
     llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
     retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
@@ -185,12 +236,25 @@ def build_chain(vectorstore):
     ])
 
     def retrieve_and_answer(inp):
-        standalone = condense_chain.invoke(inp) if inp.get("chat_history") else inp["input"]
+        question = inp["input"]
+
+        # Tool: summarize
+        if SUMMARIZE_TRIGGERS.search(question):
+            answer = tool_summarize(vectorstore)
+            return {"answer": answer, "context": []}
+
+        # Tool: calculator
+        if CALC_TRIGGERS.search(question):
+            answer = tool_calculate(question)
+            return {"answer": answer, "context": []}
+
+        # Default: RAG
+        standalone = condense_chain.invoke(inp) if inp.get("chat_history") else question
         docs = retriever.invoke(standalone)
         answer = (qa_prompt | llm | StrOutputParser()).invoke({
             "context": format_docs(docs),
             "chat_history": inp.get("chat_history", []),
-            "input": inp["input"],
+            "input": question,
         })
         return {"answer": answer, "context": docs}
 
