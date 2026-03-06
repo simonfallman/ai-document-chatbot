@@ -195,7 +195,9 @@ for msg in st.session_state.messages:
         if msg.get("sources"):
             with st.expander("Sources"):
                 for src in msg["sources"]:
-                    st.caption(src)
+                    if src.get("label"):
+                        st.caption(f"**{src['label']}**")
+                    st.caption(src["text"])
 
 if prompt := st.chat_input("Ask a question about your document..."):
     if st.session_state.chain is None:
@@ -212,16 +214,32 @@ if prompt := st.chat_input("Ask a question about your document..."):
                     config={"configurable": {"session_id": "default"}},
                 )
                 answer = result["answer"]
-                sources = [
-                    doc.page_content[:200] for doc in result.get("context", [])
-                ]
+                sources = []
+                for doc in result.get("context", []):
+                    meta = doc.metadata
+                    page = meta.get("page")
+                    source = meta.get("source", "")
+                    label = Path(source).name if source else ""
+                    if page is not None:
+                        label = f"{label} — page {int(page) + 1}" if label else f"Page {int(page) + 1}"
+                    sources.append({"text": doc.page_content[:200], "label": label})
 
-            st.markdown(answer)
+            # Stream the answer word by word
+            placeholder = st.empty()
+            displayed = ""
+            for word in answer.split(" "):
+                displayed += word + " "
+                placeholder.markdown(displayed + "▌")
+            placeholder.markdown(answer)
+
             if sources:
                 with st.expander("Sources"):
                     for src in sources:
-                        st.caption(src)
+                        if src["label"]:
+                            st.caption(f"**{src['label']}**")
+                        st.caption(src["text"])
 
         st.session_state.messages.append(
             {"role": "assistant", "content": answer, "sources": sources}
         )
+
