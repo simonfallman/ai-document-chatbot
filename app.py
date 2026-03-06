@@ -209,7 +209,7 @@ def tool_faq(vectorstore) -> str:
     sample = "\n\n".join(all_docs[:20])
     return llm.invoke(
         f"Based on the following document content, generate 5 frequently asked questions "
-        f"and their answers. Format as:\n\nQ: ...\nA: ...\n\n{sample}"
+        f"and their answers. Format each as:\n\nQ: ...\n\nA: ...\n\n{sample}"
     ).content
 
 
