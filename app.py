@@ -387,6 +387,23 @@ with st.sidebar:
     conversations = load_conversations()
     if not conversations:
         st.caption("No conversations yet.")
+    else:
+        if st.button("🗑 Delete all", use_container_width=True):
+            st.session_state.confirm_delete_all = True
+        if st.session_state.get("confirm_delete_all"):
+            st.warning("Are you sure? This cannot be undone.")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("Yes, delete all", use_container_width=True):
+                    for conv in conversations:
+                        delete_conversation(conv["id"])
+                    new_conversation()
+                    st.session_state.confirm_delete_all = False
+                    st.rerun()
+            with col2:
+                if st.button("Cancel", use_container_width=True):
+                    st.session_state.confirm_delete_all = False
+                    st.rerun()
     for conv in conversations:
         is_active = st.session_state.current_conversation_id == conv["id"]
         doc_label = conv.get("document") or "Unknown document"
