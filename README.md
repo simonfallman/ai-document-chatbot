@@ -1,24 +1,24 @@
 # AI Document Chatbot
 
-A RAG-based chatbot that lets you upload a document and ask questions about its content. Built with Python, LangChain, OpenAI, and ChromaDB.
+A RAG-based chatbot that lets you upload a document and ask questions about its content. Built with Python, LangChain, AWS Bedrock, and ChromaDB.
 
 ## Stack
 
 - **Streamlit** — web UI
 - **LangChain** — RAG orchestration
-- **OpenAI** — embeddings (`text-embedding-3-small`) + chat (`gpt-3.5-turbo`)
-- **ChromaDB** — vector store, persisted to disk
-- **SQLite** — persistent chat history
+- **AWS Bedrock** — embeddings (Amazon Titan `titan-embed-text-v2`) + LLM (Meta Llama 3 / Claude 3 Haiku)
+- **ChromaDB** — vector store, persisted to disk with per-document isolation
+- **SQLite** — persistent chat history and conversation management
 - **Docker** — containerization
-- **GitHub Actions** — CI/CD pipeline
+- **GitHub Actions** — CI/CD pipeline (test + auto-deploy)
 
 ## Features
 
 - Upload PDF, TXT, or DOCX files (max 5MB)
-- Semantic search over document content
+- Semantic search over document content using vector embeddings
 - Conversational memory — follow-up questions work correctly
 - Persistent chat history with conversation sidebar
-- Per-document vector isolation — no cross-contamination between files
+- Per-document vector isolation — each conversation remembers its own document
 - Streaming responses
 - Password protection (optional)
 - **Tools:** document summarization (map-reduce) and FAQ generation
@@ -30,11 +30,11 @@ A RAG-based chatbot that lets you upload a document and ask questions about its 
 pip install -r requirements.txt
 ```
 
-**2. Configure API key**
+**2. Configure environment**
 ```bash
 cp .env.example .env
 ```
-Edit `.env` and set your `OPENAI_API_KEY`. Optionally set `APP_PASSWORD` to enable password protection.
+Edit `.env` and set your AWS credentials. Optionally set `APP_PASSWORD` to enable password protection.
 
 **3. Run**
 ```bash
@@ -64,8 +64,8 @@ Every push to `main` triggers a GitHub Actions pipeline that:
 
 | Setting | Default | Notes |
 |---|---|---|
-| LLM | `gpt-3.5-turbo` | Change in `build_chain()` in `app.py` |
-| Embedding model | `text-embedding-3-small` | Change in `build_vectorstore()` |
+| LLM | `meta.llama3-8b-instruct-v1:0` | Change in `build_chain()` in `app.py` |
+| Embedding model | `amazon.titan-embed-text-v2:0` | Change in `get_embeddings()` |
 | Chunk size | 500 | Change in `build_vectorstore()` |
 | Chunk overlap | 50 | Change in `build_vectorstore()` |
 | Max file size | 5MB | Change `MAX_FILE_SIZE` in `app.py` |
