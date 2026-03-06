@@ -421,7 +421,7 @@ with st.sidebar:
                     st.rerun()
 # ── Main chat area ────────────────────────────────────────────────────────────
 active_doc = st.session_state.active_document
-st.title("Chat")
+st.title("💬 Chat")
 if active_doc:
     st.caption(f"📎 {active_doc}")
 
