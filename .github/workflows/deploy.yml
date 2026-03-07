@@ -36,3 +36,8 @@ jobs:
             docker stop $(docker ps -q) || true
             docker build -t ai-document-chatbot .
             docker run -d -p 8501:8501 -v $(pwd)/chroma_db:/app/chroma_db --env-file .env --restart unless-stopped ai-document-chatbot
+
+      - name: Health check
+        run: |
+          sleep 15
+          curl -f https://simonfallman.xyz
