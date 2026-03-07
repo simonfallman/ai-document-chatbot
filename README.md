@@ -2,6 +2,8 @@
 
 A RAG-based chatbot that lets you upload documents and ask questions across all of them simultaneously. Built with Python, LangChain, AWS Bedrock, and ChromaDB. Live at [simonfallman.xyz](https://simonfallman.xyz).
 
+![App screenshot](screenshot.png)
+
 ## Stack
 
 - **Streamlit** — web UI
