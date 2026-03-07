@@ -12,26 +12,26 @@ flowchart TD
     User -->|asks question| Intent
 
     subgraph Ingest["Ingest Pipeline"]
-        A[LangChain Loader\nPDF / TXT / DOCX] --> B[RecursiveCharacterTextSplitter\nchunk_size=500, overlap=50]
-        B --> C[Stamp metadata\ndocument_name · collection_hash · chunk_index]
-        C --> D[BedrockEmbeddings\nAmazon Titan]
-        D --> E[(ChromaDB\nper-document collection\nkeyed by MD5 hash)]
+        A["LangChain Loader<br/>PDF / TXT / DOCX"] --> B["RecursiveCharacterTextSplitter<br/>chunk_size=500, overlap=50"]
+        B --> C["Stamp metadata<br/>document_name · collection_hash · chunk_index"]
+        C --> D["BedrockEmbeddings<br/>Amazon Titan"]
+        D --> E[("ChromaDB<br/>per-document collection<br/>keyed by MD5 hash")]
     end
 
     subgraph Retrieve["Retrieval & Generation"]
-        Intent{Intent\nDetection} -->|summarize / faq| Tools[Map-Reduce Tools\nSummarize · FAQ]
-        Intent -->|normal question| Condense[Condense question\nwith chat history]
-        Condense --> Multi[multi_retrieve\nquery each collection\nmerge · rank · deduplicate]
+        Intent{"Intent<br/>Detection"} -->|summarize / faq| Tools["Map-Reduce Tools<br/>Summarize · FAQ"]
+        Intent -->|normal question| Condense["Condense question<br/>with chat history"]
+        Condense --> Multi["multi_retrieve<br/>query each collection<br/>merge · rank · deduplicate"]
         Multi --> E
         E --> Multi
-        Multi --> Context[Top-k chunks\nas context]
-        Context --> LLM[Claude 3 Haiku\nvia AWS Bedrock]
+        Multi --> Context["Top-k chunks<br/>as context"]
+        Context --> LLM["Claude 3 Haiku<br/>via AWS Bedrock"]
         Tools --> LLM
         LLM --> Answer([Answer + Sources])
     end
 
     subgraph Persist["Persistence"]
-        Answer --> SQLite[(SQLite\nconversations · messages\ncollection_hashes)]
+        Answer --> SQLite[("SQLite<br/>conversations · messages<br/>collection_hashes")]
     end
 ```
 
