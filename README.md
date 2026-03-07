@@ -1,12 +1,12 @@
 # AI Document Chatbot
 
-A RAG-based chatbot that lets you upload a document and ask questions about its content. Built with Python, LangChain, AWS Bedrock, and ChromaDB.
+A RAG-based chatbot that lets you upload documents and ask questions across all of them simultaneously. Built with Python, LangChain, AWS Bedrock, and ChromaDB. Live at [simonfallman.xyz](https://simonfallman.xyz).
 
 ## Stack
 
 - **Streamlit** — web UI
 - **LangChain** — RAG orchestration
-- **AWS Bedrock** — embeddings (Amazon Titan `titan-embed-text-v2`) + LLM (Meta Llama 3 / Claude 3 Haiku)
+- **AWS Bedrock** — embeddings (Amazon Titan `titan-embed-text-v2`) + LLM (Claude 3 Haiku)
 - **ChromaDB** — vector store, persisted to disk with per-document isolation
 - **SQLite** — persistent chat history and conversation management
 - **Docker** — containerization
@@ -15,13 +15,16 @@ A RAG-based chatbot that lets you upload a document and ask questions about its 
 ## Features
 
 - Upload PDF, TXT, or DOCX files (max 5MB)
-- Semantic search over document content using vector embeddings
+- **Multi-source retrieval** — select multiple documents and ask questions across all of them simultaneously
+- Semantic search using vector embeddings — retrieves by meaning, not keywords
+- Results merged and ranked by relevance score across all active documents
+- Chunk metadata stamped at index time (`document_name`, `collection_hash`, `chunk_index`) for guaranteed provenance
 - Conversational memory — follow-up questions work correctly
 - Persistent chat history with conversation sidebar
-- Per-document vector isolation — each conversation remembers its own document
+- Per-document vector isolation via MD5-keyed ChromaDB collections
 - Streaming responses
 - Password protection (optional)
-- **Tools:** document summarization (map-reduce) and FAQ generation
+- **Tools:** multi-source document summarization (map-reduce) and FAQ generation
 
 ## Local Setup
 
@@ -57,14 +60,15 @@ The `-v` flag mounts `chroma_db` from the host so indexed documents and chat his
 ## CI/CD
 
 Every push to `main` triggers a GitHub Actions pipeline that:
-1. Runs the test suite
+1. Runs the test suite (17 tests)
 2. SSHs into the server and redeploys if tests pass
+3. Health checks `https://simonfallman.xyz` to confirm the app is live
 
 ## Configuration
 
 | Setting | Default | Notes |
 |---|---|---|
-| LLM | `meta.llama3-8b-instruct-v1:0` | Change in `build_chain()` in `app.py` |
+| LLM | `anthropic.claude-3-haiku-20240307-v1:0` | Change in `build_chain()` in `app.py` |
 | Embedding model | `amazon.titan-embed-text-v2:0` | Change in `get_embeddings()` |
 | Chunk size | 500 | Change in `build_vectorstore()` |
 | Chunk overlap | 50 | Change in `build_vectorstore()` |
