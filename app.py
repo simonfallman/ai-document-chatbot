@@ -226,7 +226,7 @@ FAQ_TRIGGERS = re.compile(
 
 
 def tool_summarize(vectorstores: list) -> str:
-    llm = ChatBedrock(model_id="meta.llama3-8b-instruct-v1:0", region_name=os.getenv("AWS_REGION", "us-east-1"), model_kwargs={"temperature": 0})
+    llm = ChatBedrock(model_id="anthropic.claude-3-haiku-20240307-v1:0", region_name=os.getenv("AWS_REGION", "us-east-1"), model_kwargs={"temperature": 0})
     all_docs = []
     for vs in vectorstores:
         all_docs.extend(vs.get()["documents"])
@@ -249,7 +249,7 @@ def tool_summarize(vectorstores: list) -> str:
 
 
 def tool_faq(vectorstores: list) -> str:
-    llm = ChatBedrock(model_id="meta.llama3-8b-instruct-v1:0", region_name=os.getenv("AWS_REGION", "us-east-1"), model_kwargs={"temperature": 0})
+    llm = ChatBedrock(model_id="anthropic.claude-3-haiku-20240307-v1:0", region_name=os.getenv("AWS_REGION", "us-east-1"), model_kwargs={"temperature": 0})
     all_docs = []
     for vs in vectorstores:
         all_docs.extend(vs.get()["documents"])
@@ -263,7 +263,7 @@ def tool_faq(vectorstores: list) -> str:
 
 def build_chain(vectorstores: list):
     llm = ChatBedrock(
-        model_id="meta.llama3-8b-instruct-v1:0",
+        model_id="anthropic.claude-3-haiku-20240307-v1:0",
         region_name=os.getenv("AWS_REGION", "us-east-1"),
         model_kwargs={"temperature": 0},
     )
