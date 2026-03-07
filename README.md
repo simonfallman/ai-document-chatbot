@@ -4,6 +4,37 @@ A RAG-based chatbot that lets you upload documents and ask questions across all 
 
 ![App screenshot](screenshot.png)
 
+## Architecture
+
+```mermaid
+flowchart TD
+    User([User]) -->|uploads file| Ingest
+    User -->|asks question| Intent
+
+    subgraph Ingest["Ingest Pipeline"]
+        A[LangChain Loader\nPDF / TXT / DOCX] --> B[RecursiveCharacterTextSplitter\nchunk_size=500, overlap=50]
+        B --> C[Stamp metadata\ndocument_name · collection_hash · chunk_index]
+        C --> D[BedrockEmbeddings\nAmazon Titan]
+        D --> E[(ChromaDB\nper-document collection\nkeyed by MD5 hash)]
+    end
+
+    subgraph Retrieve["Retrieval & Generation"]
+        Intent{Intent\nDetection} -->|summarize / faq| Tools[Map-Reduce Tools\nSummarize · FAQ]
+        Intent -->|normal question| Condense[Condense question\nwith chat history]
+        Condense --> Multi[multi_retrieve\nquery each collection\nmerge · rank · deduplicate]
+        Multi --> E
+        E --> Multi
+        Multi --> Context[Top-k chunks\nas context]
+        Context --> LLM[Claude 3 Haiku\nvia AWS Bedrock]
+        Tools --> LLM
+        LLM --> Answer([Answer + Sources])
+    end
+
+    subgraph Persist["Persistence"]
+        Answer --> SQLite[(SQLite\nconversations · messages\ncollection_hashes)]
+    end
+```
+
 ## Stack
 
 - **Streamlit** — web UI
