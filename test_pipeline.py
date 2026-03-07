@@ -73,3 +73,94 @@ def test_load_indexed_hashes_returns_empty_when_missing(tmp_path, monkeypatch):
 def test_max_file_size_constant():
     from app import MAX_FILE_SIZE
     assert MAX_FILE_SIZE == 5 * 1024 * 1024
+
+
+# ── DB helpers ────────────────────────────────────────────────────────────────
+
+@pytest.fixture()
+def db(tmp_path, monkeypatch):
+    """Redirect DB_PATH to a temp file and re-run init_db() for isolation."""
+    db_file = str(tmp_path / "test_chat.db")
+    monkeypatch.setattr("app.DB_PATH", db_file)
+    import app
+    app.init_db()
+    return db_file
+
+
+def test_init_db_creates_tables(db):
+    import sqlite3
+    con = sqlite3.connect(db)
+    tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    con.close()
+    assert "conversations" in tables
+    assert "messages" in tables
+
+
+def test_create_conversation_returns_id(db, monkeypatch):
+    monkeypatch.setattr("app.DB_PATH", db)
+    from app import create_conversation
+    cid = create_conversation("Test conv", "doc.pdf")
+    assert isinstance(cid, int)
+
+
+def test_load_conversations_returns_created(db, monkeypatch):
+    monkeypatch.setattr("app.DB_PATH", db)
+    from app import create_conversation, load_conversations
+    create_conversation("My Doc", "file.txt")
+    convs = load_conversations()
+    assert any(c["title"] == "My Doc" for c in convs)
+
+
+def test_delete_conversation_removes_it(db, monkeypatch):
+    monkeypatch.setattr("app.DB_PATH", db)
+    from app import create_conversation, delete_conversation, load_conversations
+    cid = create_conversation("To Delete", "doc.pdf")
+    delete_conversation(cid)
+    convs = load_conversations()
+    assert not any(c["id"] == cid for c in convs)
+
+
+def test_save_and_load_messages(db, monkeypatch):
+    monkeypatch.setattr("app.DB_PATH", db)
+    from app import create_conversation, save_message, load_messages
+    cid = create_conversation("Chat", "doc.pdf")
+    save_message(cid, "user", "Hello?")
+    save_message(cid, "assistant", "Hi there!", sources=[{"text": "chunk"}])
+    msgs = load_messages(cid)
+    assert len(msgs) == 2
+    assert msgs[0]["role"] == "user"
+    assert msgs[0]["content"] == "Hello?"
+    assert msgs[1]["role"] == "assistant"
+    assert msgs[1]["sources"] == [{"text": "chunk"}]
+
+
+def test_collection_hash_stored_on_create(db, monkeypatch):
+    monkeypatch.setattr("app.DB_PATH", db)
+    from app import create_conversation, load_conversations
+    create_conversation("Hashed", "doc.pdf", collection_hash="deadbeef")
+    convs = load_conversations()
+    match = next(c for c in convs if c["title"] == "Hashed")
+    assert match["collection_hash"] == "deadbeef"
+
+
+# ── Tool intent detection ─────────────────────────────────────────────────────
+
+def test_summarize_trigger_matches():
+    from app import SUMMARIZE_TRIGGERS
+    assert SUMMARIZE_TRIGGERS.search("please summarize this document")
+    assert SUMMARIZE_TRIGGERS.search("Can you give me a summary?")
+    assert SUMMARIZE_TRIGGERS.search("TL;DR")
+
+
+def test_faq_trigger_matches():
+    from app import FAQ_TRIGGERS
+    assert FAQ_TRIGGERS.search("generate FAQ for this")
+    assert FAQ_TRIGGERS.search("What are the key questions?")
+    assert FAQ_TRIGGERS.search("quiz me on this content")
+
+
+def test_no_trigger_matches():
+    from app import SUMMARIZE_TRIGGERS, FAQ_TRIGGERS
+    query = "what is the main topic of chapter 2?"
+    assert not SUMMARIZE_TRIGGERS.search(query)
+    assert not FAQ_TRIGGERS.search(query)
