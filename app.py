@@ -62,15 +62,17 @@ def init_db():
         con.execute("ALTER TABLE conversations ADD COLUMN document TEXT")
     if "collection_hash" not in cols:
         con.execute("ALTER TABLE conversations ADD COLUMN collection_hash TEXT")
+    if "collection_hashes" not in cols:
+        con.execute("ALTER TABLE conversations ADD COLUMN collection_hashes TEXT")
     con.commit()
     con.close()
 
 
-def create_conversation(title: str, document: str, collection_hash: str = None) -> int:
+def create_conversation(title: str, document: str, collection_hash: str = None, collection_hashes: list = None) -> int:
     con = sqlite3.connect(DB_PATH)
     cur = con.execute(
-        "INSERT INTO conversations (title, document, collection_hash) VALUES (?, ?, ?)",
-        (title, document, collection_hash)
+        "INSERT INTO conversations (title, document, collection_hash, collection_hashes) VALUES (?, ?, ?, ?)",
+        (title, document, collection_hash, json.dumps(collection_hashes) if collection_hashes else None)
     )
     con.commit()
     cid = cur.lastrowid
@@ -81,10 +83,16 @@ def create_conversation(title: str, document: str, collection_hash: str = None) 
 def load_conversations() -> list:
     con = sqlite3.connect(DB_PATH)
     rows = con.execute(
-        "SELECT id, title, document, collection_hash FROM conversations ORDER BY created_at DESC"
+        "SELECT id, title, document, collection_hash, collection_hashes FROM conversations ORDER BY created_at DESC"
     ).fetchall()
     con.close()
-    return [{"id": r[0], "title": r[1], "document": r[2], "collection_hash": r[3]} for r in rows]
+    return [
+        {
+            "id": r[0], "title": r[1], "document": r[2], "collection_hash": r[3],
+            "collection_hashes": json.loads(r[4]) if r[4] else None,
+        }
+        for r in rows
+    ]
 
 
 def delete_conversation(cid: int):
@@ -176,6 +184,26 @@ def get_vectorstore(collection_name: str):
     )
 
 
+def get_vectorstores(collection_names: list):
+    return [get_vectorstore(name) for name in collection_names]
+
+
+def multi_retrieve(vectorstores: list, query: str, k: int = 6) -> list:
+    """Query each vectorstore, merge results by relevance score, deduplicate."""
+    all_results = []
+    for vs in vectorstores:
+        all_results.extend(vs.similarity_search_with_relevance_scores(query, k=4))
+    all_results.sort(key=lambda x: x[1], reverse=True)
+    seen, unique = set(), []
+    for doc, _ in all_results:
+        if doc.page_content not in seen:
+            seen.add(doc.page_content)
+            unique.append(doc)
+        if len(unique) >= k:
+            break
+    return unique
+
+
 def format_docs(docs):
     return "\n\n".join(doc.page_content for doc in docs)
 
@@ -193,9 +221,11 @@ FAQ_TRIGGERS = re.compile(
 )
 
 
-def tool_summarize(vectorstore) -> str:
+def tool_summarize(vectorstores: list) -> str:
     llm = ChatBedrock(model_id="meta.llama3-8b-instruct-v1:0", region_name=os.getenv("AWS_REGION", "us-east-1"), model_kwargs={"temperature": 0})
-    all_docs = vectorstore.get()["documents"]
+    all_docs = []
+    for vs in vectorstores:
+        all_docs.extend(vs.get()["documents"])
     # Map: summarize each batch of 10 chunks
     batch_size = 10
     batch_summaries = []
@@ -214,9 +244,11 @@ def tool_summarize(vectorstore) -> str:
     ).content
 
 
-def tool_faq(vectorstore) -> str:
+def tool_faq(vectorstores: list) -> str:
     llm = ChatBedrock(model_id="meta.llama3-8b-instruct-v1:0", region_name=os.getenv("AWS_REGION", "us-east-1"), model_kwargs={"temperature": 0})
-    all_docs = vectorstore.get()["documents"]
+    all_docs = []
+    for vs in vectorstores:
+        all_docs.extend(vs.get()["documents"])
     # Take a representative sample of chunks
     sample = "\n\n".join(all_docs[:20])
     return llm.invoke(
@@ -225,13 +257,12 @@ def tool_faq(vectorstore) -> str:
     ).content
 
 
-def build_chain(vectorstore):
+def build_chain(vectorstores: list):
     llm = ChatBedrock(
         model_id="meta.llama3-8b-instruct-v1:0",
         region_name=os.getenv("AWS_REGION", "us-east-1"),
         model_kwargs={"temperature": 0},
     )
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
 
     condense_prompt = ChatPromptTemplate.from_messages([
         MessagesPlaceholder("chat_history"),
@@ -251,17 +282,17 @@ def build_chain(vectorstore):
 
         # Tool: summarize
         if SUMMARIZE_TRIGGERS.search(question):
-            answer = tool_summarize(vectorstore)
+            answer = tool_summarize(vectorstores)
             return {"answer": answer, "context": []}
 
         # Tool: FAQ
         if FAQ_TRIGGERS.search(question):
-            answer = tool_faq(vectorstore)
+            answer = tool_faq(vectorstores)
             return {"answer": answer, "context": []}
 
-        # Default: RAG
+        # Default: RAG across all sources
         standalone = condense_chain.invoke(inp) if inp.get("chat_history") else question
-        docs = retriever.invoke(standalone)
+        docs = multi_retrieve(vectorstores, standalone)
         answer = (qa_prompt | llm | StrOutputParser()).invoke({
             "context": format_docs(docs),
             "chat_history": inp.get("chat_history", []),
@@ -293,16 +324,18 @@ def switch_conversation(conv: dict):
     st.session_state.messages = msgs
     st.session_state.chat_history = history
 
-    # Reload vectorstore for this conversation's document
-    chash = conv.get("collection_hash")
-    if chash:
-        vectorstore = get_vectorstore(collection_name=chash)
-        st.session_state.active_collection = chash
-        st.session_state.active_document = conv.get("document")
-        st.session_state.chain = build_chain(vectorstore)
+    # Reload vectorstores for this conversation's documents
+    chashes = conv.get("collection_hashes") or (
+        [conv["collection_hash"]] if conv.get("collection_hash") else []
+    )
+    if chashes:
+        vectorstores = get_vectorstores(chashes)
+        st.session_state.active_collections = chashes
+        st.session_state.active_documents = conv.get("document", "").split(", ")
+        st.session_state.chain = build_chain(vectorstores)
     else:
-        st.session_state.active_collection = None
-        st.session_state.active_document = conv.get("document")
+        st.session_state.active_collections = []
+        st.session_state.active_documents = []
         st.session_state.chain = None
 
 
@@ -347,8 +380,10 @@ if "chat_history" not in st.session_state:
     st.session_state.chat_history = ChatMessageHistory()
 if "current_conversation_id" not in st.session_state:
     st.session_state.current_conversation_id = None
-if "active_document" not in st.session_state:
-    st.session_state.active_document = None
+if "active_collections" not in st.session_state:
+    st.session_state.active_collections = []
+if "active_documents" not in st.session_state:
+    st.session_state.active_documents = []
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -383,20 +418,36 @@ with st.sidebar:
                     if docs is None:
                         st.error("Could not load document.")
                     else:
-                        vectorstore = build_vectorstore(docs, collection_name=fhash)
+                        build_vectorstore(docs, collection_name=fhash)
                         indexed[fhash] = uploaded.name
                         save_indexed_hashes(indexed)
-                        st.session_state.active_collection = fhash
-                        st.session_state.active_document = uploaded.name
-                        st.session_state.chain = build_chain(vectorstore)
+                        if fhash not in st.session_state.active_collections:
+                            st.session_state.active_collections = st.session_state.active_collections + [fhash]
+                            st.session_state.active_documents = st.session_state.active_documents + [uploaded.name]
                         st.success(f"Indexed: {uploaded.name}")
             else:
-                if st.session_state.chain is None or st.session_state.get("active_collection") != fhash:
-                    vectorstore = get_vectorstore(collection_name=fhash)
-                    st.session_state.active_collection = fhash
-                    st.session_state.active_document = indexed[fhash]
-                    st.session_state.chain = build_chain(vectorstore)
+                if fhash not in st.session_state.active_collections:
+                    st.session_state.active_collections = st.session_state.active_collections + [fhash]
+                    st.session_state.active_documents = st.session_state.active_documents + [indexed[fhash]]
                 st.info(f"Already indexed: {indexed[fhash]}")
+
+    # Document selector — pick which indexed docs are active
+    indexed = load_indexed_hashes()
+    if indexed:
+        st.subheader("Active Documents")
+        all_hashes = list(indexed.keys())
+        all_names = [indexed[h] for h in all_hashes]
+        current_names = [indexed[h] for h in st.session_state.active_collections if h in indexed]
+        selected_names = st.multiselect("Chat with:", all_names, default=current_names)
+        selected_hashes = [all_hashes[all_names.index(n)] for n in selected_names]
+        if sorted(selected_hashes) != sorted(st.session_state.active_collections):
+            st.session_state.active_collections = selected_hashes
+            st.session_state.active_documents = selected_names
+            if selected_hashes:
+                st.session_state.chain = build_chain(get_vectorstores(selected_hashes))
+            else:
+                st.session_state.chain = None
+            st.rerun()
 
     st.divider()
 
@@ -449,10 +500,10 @@ with st.sidebar:
                     st.session_state.confirm_delete_all = False
                     st.rerun()
 # ── Main chat area ────────────────────────────────────────────────────────────
-active_doc = st.session_state.active_document
+active_docs = st.session_state.get("active_documents", [])
 st.title("💬 Chat")
-if active_doc:
-    st.caption(f"📎 {active_doc}")
+if active_docs:
+    st.caption("📎 " + " · ".join(active_docs))
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
@@ -475,7 +526,7 @@ if st.session_state.chain is not None:
             st.session_state.quick_prompt = "Generate FAQ"
 
 prompt_value = st.session_state.pop("quick_prompt", None)
-placeholder_text = f"Ask a question about {active_doc}..." if active_doc else "Upload a document to start chatting..."
+placeholder_text = f"Ask about {' & '.join(active_docs)}..." if active_docs else "Upload a document to start chatting..."
 if prompt := (prompt_value or st.chat_input(placeholder_text)):
     if st.session_state.chain is None:
         st.warning("Please upload a document first.")
@@ -483,7 +534,8 @@ if prompt := (prompt_value or st.chat_input(placeholder_text)):
         # Create a new conversation on first message
         if st.session_state.current_conversation_id is None:
             title = prompt[:60] + ("..." if len(prompt) > 60 else "")
-            cid = create_conversation(title, st.session_state.active_document, st.session_state.get("active_collection"))
+            doc_label = ", ".join(st.session_state.active_documents)
+            cid = create_conversation(title, doc_label, collection_hashes=st.session_state.active_collections)
             st.session_state.current_conversation_id = cid
 
         cid = st.session_state.current_conversation_id
