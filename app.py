@@ -164,9 +164,13 @@ def get_embeddings():
     )
 
 
-def build_vectorstore(docs, collection_name: str):
+def build_vectorstore(docs, collection_name: str, document_name: str = ""):
     splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
     chunks = splitter.split_documents(docs)
+    for i, chunk in enumerate(chunks):
+        chunk.metadata["document_name"] = document_name
+        chunk.metadata["collection_hash"] = collection_name
+        chunk.metadata["chunk_index"] = i
     vectorstore = Chroma(
         persist_directory=CHROMA_DIR,
         embedding_function=get_embeddings(),
@@ -418,7 +422,7 @@ with st.sidebar:
                     if docs is None:
                         st.error("Could not load document.")
                     else:
-                        build_vectorstore(docs, collection_name=fhash)
+                        build_vectorstore(docs, collection_name=fhash, document_name=uploaded.name)
                         indexed[fhash] = uploaded.name
                         save_indexed_hashes(indexed)
                         if fhash not in st.session_state.active_collections:
@@ -555,10 +559,10 @@ if prompt := (prompt_value or st.chat_input(placeholder_text)):
                 for doc in result.get("context", []):
                     meta = doc.metadata
                     page = meta.get("page")
-                    source = meta.get("source", "")
-                    label = Path(source).name if source else ""
+                    name = meta.get("document_name") or Path(meta.get("source", "")).name
+                    label = name
                     if page is not None:
-                        label = f"{label} — page {int(page) + 1}" if label else f"Page {int(page) + 1}"
+                        label = f"{name} — page {int(page) + 1}" if name else f"Page {int(page) + 1}"
                     sources.append({"text": doc.page_content[:200], "label": label})
 
             # Stream answer word by word
