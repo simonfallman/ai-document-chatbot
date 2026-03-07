@@ -452,6 +452,8 @@ with st.sidebar:
             else:
                 st.session_state.chain = None
             st.rerun()
+        elif st.session_state.active_collections and st.session_state.chain is None:
+            st.session_state.chain = build_chain(get_vectorstores(st.session_state.active_collections))
 
     st.divider()
 
