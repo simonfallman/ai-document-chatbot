@@ -25,7 +25,7 @@ flowchart TD
         Multi --> E
         E --> Multi
         Multi --> Context["Top-k chunks<br/>as context"]
-        Context --> LLM["Claude 3 Haiku<br/>via AWS Bedrock"]
+        Context --> LLM["Claude 3.5 Haiku<br/>via AWS Bedrock"]
         Tools --> LLM
         LLM --> Answer([Answer + Sources])
     end
@@ -39,7 +39,7 @@ flowchart TD
 
 - **Streamlit** — web UI
 - **LangChain** — RAG orchestration
-- **AWS Bedrock** — embeddings (Amazon Titan `titan-embed-text-v2`) + LLM (Claude 3 Haiku)
+- **AWS Bedrock** — embeddings (Amazon Titan `titan-embed-text-v2`) + LLM (Claude 3.5 Haiku)
 - **ChromaDB** — vector store, persisted to disk with per-document isolation
 - **SQLite** — persistent chat history and conversation management
 - **Docker** — containerization
@@ -101,7 +101,7 @@ Every push to `main` triggers a GitHub Actions pipeline that:
 
 | Setting | Default | Notes |
 |---|---|---|
-| LLM | `anthropic.claude-3-haiku-20240307-v1:0` | Change in `build_chain()` in `app.py` |
+| LLM | `anthropic.claude-3-5-haiku-20241022-v1:0` | Change in `build_chain()` in `app.py` |
 | Embedding model | `amazon.titan-embed-text-v2:0` | Change in `get_embeddings()` |
 | Chunk size | 500 | Change in `build_vectorstore()` |
 | Chunk overlap | 50 | Change in `build_vectorstore()` |
