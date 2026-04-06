@@ -24,7 +24,7 @@ except ImportError:
     DOCX_SUPPORTED = False
 
 import threading
-import time
+import time  # used in build_chain instrumentation (Task 4)
 from prometheus_client import Counter, Histogram, start_http_server
 
 # ── Prometheus metrics ─────────────────────────────────────────────────────────

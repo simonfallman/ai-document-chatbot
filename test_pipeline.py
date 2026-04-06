@@ -196,9 +196,9 @@ def test_upload_counter_increments():
 
 
 def test_metrics_server_does_not_start_without_env_var(monkeypatch):
+    from unittest.mock import patch
     monkeypatch.delenv("PROMETHEUS_METRICS_PORT", raising=False)
-    # Re-importing won't re-run module level code, so just verify the function exists
     from app import start_metrics_server
-    # Should not raise even when env var is absent
-    # (we don't call it here — just verify it's importable and callable)
-    assert callable(start_metrics_server)
+    with patch("threading.Thread") as mock_thread:
+        start_metrics_server()
+        mock_thread.assert_not_called()
