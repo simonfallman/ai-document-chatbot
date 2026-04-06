@@ -10,3 +10,5 @@ openai
 pypdf
 python-dotenv
 docx2txt
+prometheus-client>=0.20.0
+mlflow>=2.13.0
