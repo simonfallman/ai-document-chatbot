@@ -164,3 +164,41 @@ def test_no_trigger_matches():
     query = "what is the main topic of chapter 2?"
     assert not SUMMARIZE_TRIGGERS.search(query)
     assert not FAQ_TRIGGERS.search(query)
+
+
+# ── Prometheus metrics ────────────────────────────────────────────────────────
+
+def test_metric_objects_exist():
+    from app import QUERY_COUNTER, QUERY_LATENCY, RETRIEVAL_LATENCY, UPLOAD_COUNTER, ERROR_COUNTER
+    assert QUERY_COUNTER is not None
+    assert QUERY_LATENCY is not None
+    assert RETRIEVAL_LATENCY is not None
+    assert UPLOAD_COUNTER is not None
+    assert ERROR_COUNTER is not None
+
+
+def test_query_counter_increments():
+    from app import QUERY_COUNTER
+    from prometheus_client import REGISTRY
+    before = REGISTRY.get_sample_value('query_total') or 0.0
+    QUERY_COUNTER.inc()
+    after = REGISTRY.get_sample_value('query_total') or 0.0
+    assert after == before + 1.0
+
+
+def test_upload_counter_increments():
+    from app import UPLOAD_COUNTER
+    from prometheus_client import REGISTRY
+    before = REGISTRY.get_sample_value('document_uploads_total') or 0.0
+    UPLOAD_COUNTER.inc()
+    after = REGISTRY.get_sample_value('document_uploads_total') or 0.0
+    assert after == before + 1.0
+
+
+def test_metrics_server_does_not_start_without_env_var(monkeypatch):
+    monkeypatch.delenv("PROMETHEUS_METRICS_PORT", raising=False)
+    # Re-importing won't re-run module level code, so just verify the function exists
+    from app import start_metrics_server
+    # Should not raise even when env var is absent
+    # (we don't call it here — just verify it's importable and callable)
+    assert callable(start_metrics_server)

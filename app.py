@@ -23,6 +23,26 @@ try:
 except ImportError:
     DOCX_SUPPORTED = False
 
+import threading
+import time
+from prometheus_client import Counter, Histogram, start_http_server
+
+# ── Prometheus metrics ─────────────────────────────────────────────────────────
+QUERY_COUNTER = Counter('query_total', 'Total RAG queries processed')
+QUERY_LATENCY = Histogram('query_latency_seconds', 'End-to-end query duration in seconds')
+RETRIEVAL_LATENCY = Histogram('retrieval_latency_seconds', 'ChromaDB retrieval duration in seconds')
+UPLOAD_COUNTER = Counter('document_uploads_total', 'Total documents successfully indexed')
+ERROR_COUNTER = Counter('errors_total', 'Pipeline errors', ['type'])
+
+
+def start_metrics_server():
+    port = int(os.getenv("PROMETHEUS_METRICS_PORT", "0"))
+    if port:
+        threading.Thread(target=start_http_server, args=(port,), daemon=True).start()
+
+
+start_metrics_server()
+
 load_dotenv()
 
 CHROMA_DIR = "./chroma_db"
