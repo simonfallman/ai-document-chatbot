@@ -23,6 +23,7 @@ try:
 except ImportError:
     DOCX_SUPPORTED = False
 
+import mlflow
 import threading
 import time  # used in build_chain instrumentation (Task 4)
 from prometheus_client import Counter, Histogram, start_http_server
@@ -43,18 +44,16 @@ def start_metrics_server():
 
 start_metrics_server()
 
-import mlflow
-
 # ── MLflow experiment tracking ─────────────────────────────────────────────────
 def log_query_to_mlflow(query_type: str, document_name: str, retrieval_ms: float, total_ms: float):
     try:
         mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
         mlflow.set_experiment("ai-document-chatbot")
         with mlflow.start_run():
-            mlflow.log_param("chunk_size", 500)
-            mlflow.log_param("chunk_overlap", 50)
-            mlflow.log_param("model_id", "anthropic.claude-3-5-haiku-20241022-v1:0")
-            mlflow.log_param("k", 6)
+            mlflow.log_param("chunk_size", CHUNK_SIZE)
+            mlflow.log_param("chunk_overlap", CHUNK_OVERLAP)
+            mlflow.log_param("model_id", MODEL_ID)
+            mlflow.log_param("k", RETRIEVAL_K)
             mlflow.log_metric("retrieval_latency_ms", retrieval_ms)
             mlflow.log_metric("total_latency_ms", total_ms)
             mlflow.set_tag("document_name", document_name)
@@ -63,6 +62,11 @@ def log_query_to_mlflow(query_type: str, document_name: str, retrieval_ms: float
         print(f"[MLflow] logging failed: {e}")
 
 load_dotenv()
+
+CHUNK_SIZE = 500
+CHUNK_OVERLAP = 50
+MODEL_ID = "anthropic.claude-3-5-haiku-20241022-v1:0"
+RETRIEVAL_K = 6
 
 CHROMA_DIR = "./chroma_db"
 DOCUMENTS_DIR = "./documents"
@@ -204,7 +208,7 @@ def get_embeddings():
 
 
 def build_vectorstore(docs, collection_name: str, document_name: str = ""):
-    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+    splitter = RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
     chunks = splitter.split_documents(docs)
     for i, chunk in enumerate(chunks):
         chunk.metadata["document_name"] = document_name
@@ -231,7 +235,7 @@ def get_vectorstores(collection_names: list):
     return [get_vectorstore(name) for name in collection_names]
 
 
-def multi_retrieve(vectorstores: list, query: str, k: int = 6) -> list:
+def multi_retrieve(vectorstores: list, query: str, k: int = RETRIEVAL_K) -> list:
     """Query each vectorstore, merge results by relevance score, deduplicate."""
     all_results = []
     for vs in vectorstores:
@@ -265,7 +269,7 @@ FAQ_TRIGGERS = re.compile(
 
 
 def tool_summarize(vectorstores: list) -> str:
-    llm = ChatBedrock(model_id="anthropic.claude-3-5-haiku-20241022-v1:0", region_name=os.getenv("AWS_REGION", "us-east-1"), model_kwargs={"temperature": 0})
+    llm = ChatBedrock(model_id=MODEL_ID, region_name=os.getenv("AWS_REGION", "us-east-1"), model_kwargs={"temperature": 0})
     all_docs = []
     for vs in vectorstores:
         all_docs.extend(vs.get()["documents"])
@@ -288,7 +292,7 @@ def tool_summarize(vectorstores: list) -> str:
 
 
 def tool_faq(vectorstores: list) -> str:
-    llm = ChatBedrock(model_id="anthropic.claude-3-5-haiku-20241022-v1:0", region_name=os.getenv("AWS_REGION", "us-east-1"), model_kwargs={"temperature": 0})
+    llm = ChatBedrock(model_id=MODEL_ID, region_name=os.getenv("AWS_REGION", "us-east-1"), model_kwargs={"temperature": 0})
     all_docs = []
     for vs in vectorstores:
         all_docs.extend(vs.get()["documents"])
@@ -302,7 +306,7 @@ def tool_faq(vectorstores: list) -> str:
 
 def build_chain(vectorstores: list):
     llm = ChatBedrock(
-        model_id="anthropic.claude-3-5-haiku-20241022-v1:0",
+        model_id=MODEL_ID,
         region_name=os.getenv("AWS_REGION", "us-east-1"),
         model_kwargs={"temperature": 0},
     )
