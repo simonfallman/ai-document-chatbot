@@ -10,5 +10,6 @@ COPY app.py .
 RUN mkdir -p documents chroma_db
 
 EXPOSE 8501
+EXPOSE 8000
 
 CMD ["streamlit", "run", "app.py", "--server.address=0.0.0.0", "--server.port=8501"]
