@@ -43,6 +43,25 @@ def start_metrics_server():
 
 start_metrics_server()
 
+import mlflow
+
+# ── MLflow experiment tracking ─────────────────────────────────────────────────
+def log_query_to_mlflow(query_type: str, document_name: str, retrieval_ms: float, total_ms: float):
+    try:
+        mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
+        mlflow.set_experiment("ai-document-chatbot")
+        with mlflow.start_run():
+            mlflow.log_param("chunk_size", 500)
+            mlflow.log_param("chunk_overlap", 50)
+            mlflow.log_param("model_id", "anthropic.claude-3-5-haiku-20241022-v1:0")
+            mlflow.log_param("k", 6)
+            mlflow.log_metric("retrieval_latency_ms", retrieval_ms)
+            mlflow.log_metric("total_latency_ms", total_ms)
+            mlflow.set_tag("document_name", document_name)
+            mlflow.set_tag("query_type", query_type)
+    except Exception as e:
+        print(f"[MLflow] logging failed: {e}")
+
 load_dotenv()
 
 CHROMA_DIR = "./chroma_db"

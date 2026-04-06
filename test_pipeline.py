@@ -202,3 +202,42 @@ def test_metrics_server_does_not_start_without_env_var(monkeypatch):
     with patch("threading.Thread") as mock_thread:
         start_metrics_server()
         mock_thread.assert_not_called()
+
+
+# ── MLflow logging ────────────────────────────────────────────────────────────
+
+def test_log_query_to_mlflow_calls_mlflow(monkeypatch):
+    import mlflow
+    from unittest.mock import patch, MagicMock
+
+    mock_run = MagicMock()
+    mock_run.__enter__ = MagicMock(return_value=mock_run)
+    mock_run.__exit__ = MagicMock(return_value=False)
+
+    with patch('mlflow.set_tracking_uri') as mock_uri, \
+         patch('mlflow.set_experiment') as mock_exp, \
+         patch('mlflow.start_run', return_value=mock_run) as mock_start, \
+         patch('mlflow.log_param') as mock_param, \
+         patch('mlflow.log_metric') as mock_metric, \
+         patch('mlflow.set_tag') as mock_tag:
+
+        from app import log_query_to_mlflow
+        log_query_to_mlflow("rag", "doc.pdf", retrieval_ms=42.0, total_ms=310.0)
+
+        mock_uri.assert_called_once()
+        mock_exp.assert_called_once_with("ai-document-chatbot")
+        mock_param.assert_any_call("chunk_size", 500)
+        mock_param.assert_any_call("chunk_overlap", 50)
+        mock_param.assert_any_call("model_id", "anthropic.claude-3-5-haiku-20241022-v1:0")
+        mock_param.assert_any_call("k", 6)
+        mock_metric.assert_any_call("retrieval_latency_ms", 42.0)
+        mock_metric.assert_any_call("total_latency_ms", 310.0)
+        mock_tag.assert_any_call("document_name", "doc.pdf")
+        mock_tag.assert_any_call("query_type", "rag")
+
+
+def test_log_query_to_mlflow_swallows_exceptions(monkeypatch):
+    with patch('mlflow.set_tracking_uri', side_effect=Exception("connection refused")):
+        from app import log_query_to_mlflow
+        # Should not raise
+        log_query_to_mlflow("rag", "doc.pdf", retrieval_ms=10.0, total_ms=200.0)
