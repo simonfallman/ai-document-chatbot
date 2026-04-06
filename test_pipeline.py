@@ -227,7 +227,7 @@ def test_log_query_to_mlflow_calls_mlflow(monkeypatch):
         mock_start.assert_called_once()
         mock_param.assert_any_call("chunk_size", 500)
         mock_param.assert_any_call("chunk_overlap", 50)
-        mock_param.assert_any_call("model_id", "anthropic.claude-3-5-haiku-20241022-v1:0")
+        mock_param.assert_any_call("model_id", "us.anthropic.claude-3-5-haiku-20241022-v1:0")
         mock_param.assert_any_call("k", 6)
         mock_metric.assert_any_call("retrieval_latency_ms", 42.0)
         mock_metric.assert_any_call("total_latency_ms", 310.0)

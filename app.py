@@ -105,7 +105,7 @@ load_dotenv()
 
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
-MODEL_ID = "anthropic.claude-3-5-haiku-20241022-v1:0"
+MODEL_ID = "us.anthropic.claude-3-5-haiku-20241022-v1:0"
 RETRIEVAL_K = 6
 
 CHROMA_DIR = "./chroma_db"
