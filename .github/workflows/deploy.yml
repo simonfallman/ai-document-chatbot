@@ -33,9 +33,8 @@ jobs:
           script: |
             cd /root/ai-document-chatbot
             git pull
-            docker stop $(docker ps -q) || true
-            docker build -t ai-document-chatbot .
-            docker run -d -p 8501:8501 -v $(pwd)/chroma_db:/app/chroma_db --env-file .env --restart unless-stopped ai-document-chatbot
+            docker compose pull
+            docker compose up -d --build
 
       - name: Health check
         run: |
