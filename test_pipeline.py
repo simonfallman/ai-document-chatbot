@@ -210,6 +210,8 @@ def test_log_query_to_mlflow_calls_mlflow(monkeypatch):
     import mlflow
     from unittest.mock import patch, MagicMock
 
+    monkeypatch.setenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+
     mock_run = MagicMock()
     mock_run.__enter__ = MagicMock(return_value=mock_run)
     mock_run.__exit__ = MagicMock(return_value=False)

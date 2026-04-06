@@ -54,6 +54,8 @@ start_metrics_server()
 
 # ── MLflow experiment tracking ─────────────────────────────────────────────────
 def log_query_to_mlflow(query_type: str, document_name: str, retrieval_ms: float, total_ms: float):
+    if not os.getenv("MLFLOW_TRACKING_URI"):
+        return
     try:
         with mlflow.start_run():
             mlflow.log_param("chunk_size", CHUNK_SIZE)
@@ -69,8 +71,11 @@ def log_query_to_mlflow(query_type: str, document_name: str, retrieval_ms: float
 
 
 def init_mlflow():
+    uri = os.getenv("MLFLOW_TRACKING_URI")
+    if not uri:
+        return
     try:
-        mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
+        mlflow.set_tracking_uri(uri)
         mlflow.set_experiment("ai-document-chatbot")
     except Exception as e:
         print(f"[MLflow] init failed: {e}")
