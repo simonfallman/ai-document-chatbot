@@ -33,7 +33,8 @@ jobs:
           script: |
             cd /root/ai-document-chatbot
             git pull
-            docker compose down --remove-orphans || true
+            docker stop $(docker ps -q) 2>/dev/null || true
+            docker compose down --remove-orphans 2>/dev/null || true
             docker compose pull
             docker compose up -d --build
 
