@@ -386,7 +386,7 @@ def build_chain(vectorstores: list):
             return {"answer": answer, "context": docs}
 
         except Exception as e:
-            ERROR_COUNTER.labels(type=type(e).__name__).inc()
+            ERROR_COUNTER.labels(type=type(e).__name__).inc()  # label = exception class name
             raise
 
     return RunnableWithMessageHistory(

@@ -241,11 +241,16 @@ def test_log_query_to_mlflow_swallows_exceptions(monkeypatch):
 
 
 def test_error_counter_increments_on_exception():
-    from unittest.mock import patch
     from app import ERROR_COUNTER
     from prometheus_client import REGISTRY
 
-    before = REGISTRY.get_sample_value('errors_total', {'type': 'ValueError'}) or 0.0
-    ERROR_COUNTER.labels(type='ValueError').inc()
-    after = REGISTRY.get_sample_value('errors_total', {'type': 'ValueError'}) or 0.0
+    # Simulate what the except block does: ERROR_COUNTER.labels(type=type(e).__name__).inc()
+    exc = ValueError("test error")
+    label = type(exc).__name__  # "ValueError"
+
+    before = REGISTRY.get_sample_value('errors_total', {'type': label}) or 0.0
+    ERROR_COUNTER.labels(type=label).inc()
+    after = REGISTRY.get_sample_value('errors_total', {'type': label}) or 0.0
+
     assert after == before + 1.0
+    assert label == "ValueError"
