@@ -29,28 +29,43 @@ import time  # used in build_chain instrumentation (Task 4)
 from prometheus_client import Counter, Histogram, start_http_server
 
 # ── Prometheus metrics ─────────────────────────────────────────────────────────
-QUERY_COUNTER = Counter('query_total', 'Total RAG queries processed')
-QUERY_LATENCY = Histogram(
-    'query_latency_seconds',
-    'End-to-end query duration in seconds',
-    buckets=[0.5, 1, 2, 4, 8, 15, 30, 60],
-)
-RETRIEVAL_LATENCY = Histogram(
-    'retrieval_latency_seconds',
-    'ChromaDB retrieval duration in seconds',
-    buckets=[0.1, 0.25, 0.5, 1, 2, 4],
-)
-UPLOAD_COUNTER = Counter('document_uploads_total', 'Total documents successfully indexed')
-ERROR_COUNTER = Counter('errors_total', 'Pipeline errors', ['type'])
+# @st.cache_resource ensures metrics are created once per process even when
+# Streamlit hot-reloads the script, preventing duplicate registry errors.
+@st.cache_resource
+def _create_metrics():
+    return {
+        'query_counter': Counter('query_total', 'Total RAG queries processed'),
+        'query_latency': Histogram(
+            'query_latency_seconds',
+            'End-to-end query duration in seconds',
+            buckets=[0.5, 1, 2, 4, 8, 15, 30, 60],
+        ),
+        'retrieval_latency': Histogram(
+            'retrieval_latency_seconds',
+            'ChromaDB retrieval duration in seconds',
+            buckets=[0.1, 0.25, 0.5, 1, 2, 4],
+        ),
+        'upload_counter': Counter('document_uploads_total', 'Total documents successfully indexed'),
+        'error_counter': Counter('errors_total', 'Pipeline errors', ['type']),
+    }
+
+_m = _create_metrics()
+QUERY_COUNTER = _m['query_counter']
+QUERY_LATENCY = _m['query_latency']
+RETRIEVAL_LATENCY = _m['retrieval_latency']
+UPLOAD_COUNTER = _m['upload_counter']
+ERROR_COUNTER = _m['error_counter']
 
 
-def start_metrics_server():
+@st.cache_resource
+def _start_metrics_server():
     port = int(os.getenv("PROMETHEUS_METRICS_PORT", "0"))
     if port:
         threading.Thread(target=start_http_server, args=(port,), daemon=True).start()
+    return True
 
 
-start_metrics_server()
+_start_metrics_server()
 
 # ── MLflow experiment tracking ─────────────────────────────────────────────────
 def log_query_to_mlflow(query_type: str, document_name: str, retrieval_ms: float, total_ms: float):
