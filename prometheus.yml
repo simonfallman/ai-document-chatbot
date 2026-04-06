@@ -6,4 +6,4 @@ scrape_configs:
   - job_name: ai-chatbot
     static_configs:
       - targets:
-          - app:8000
+          - app:8001
