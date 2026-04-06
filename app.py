@@ -325,27 +325,52 @@ def build_chain(vectorstores: list):
     ])
 
     def retrieve_and_answer(inp):
+        t_start = time.time()
         question = inp["input"]
+        doc_names = ", ".join(st.session_state.get("active_documents", []))
 
-        # Tool: summarize
-        if SUMMARIZE_TRIGGERS.search(question):
-            answer = tool_summarize(vectorstores)
-            return {"answer": answer, "context": []}
+        try:
+            QUERY_COUNTER.inc()
 
-        # Tool: FAQ
-        if FAQ_TRIGGERS.search(question):
-            answer = tool_faq(vectorstores)
-            return {"answer": answer, "context": []}
+            # Tool: summarize
+            if SUMMARIZE_TRIGGERS.search(question):
+                answer = tool_summarize(vectorstores)
+                total_ms = (time.time() - t_start) * 1000
+                QUERY_LATENCY.observe(time.time() - t_start)
+                log_query_to_mlflow("summarize", doc_names, 0.0, total_ms)
+                return {"answer": answer, "context": []}
 
-        # Default: RAG across all sources
-        standalone = condense_chain.invoke(inp) if inp.get("chat_history") else question
-        docs = multi_retrieve(vectorstores, standalone)
-        answer = (qa_prompt | llm | StrOutputParser()).invoke({
-            "context": format_docs(docs),
-            "chat_history": inp.get("chat_history", []),
-            "input": question,
-        })
-        return {"answer": answer, "context": docs}
+            # Tool: FAQ
+            if FAQ_TRIGGERS.search(question):
+                answer = tool_faq(vectorstores)
+                total_ms = (time.time() - t_start) * 1000
+                QUERY_LATENCY.observe(time.time() - t_start)
+                log_query_to_mlflow("faq", doc_names, 0.0, total_ms)
+                return {"answer": answer, "context": []}
+
+            # Default: RAG across all sources
+            standalone = condense_chain.invoke(inp) if inp.get("chat_history") else question
+
+            t_retrieval = time.time()
+            docs = multi_retrieve(vectorstores, standalone)
+            retrieval_ms = (time.time() - t_retrieval) * 1000
+            RETRIEVAL_LATENCY.observe(time.time() - t_retrieval)
+
+            answer = (qa_prompt | llm | StrOutputParser()).invoke({
+                "context": format_docs(docs),
+                "chat_history": inp.get("chat_history", []),
+                "input": question,
+            })
+
+            total_ms = (time.time() - t_start) * 1000
+            QUERY_LATENCY.observe(time.time() - t_start)
+            log_query_to_mlflow("rag", doc_names, retrieval_ms, total_ms)
+
+            return {"answer": answer, "context": docs}
+
+        except Exception as e:
+            ERROR_COUNTER.labels(type=type(e).__name__).inc()
+            raise
 
     return RunnableWithMessageHistory(
         RunnableLambda(retrieve_and_answer),
@@ -471,6 +496,7 @@ with st.sidebar:
                         if fhash not in st.session_state.active_collections:
                             st.session_state.active_collections = st.session_state.active_collections + [fhash]
                             st.session_state.active_documents = st.session_state.active_documents + [uploaded.name]
+                        UPLOAD_COUNTER.inc()
                         st.success(f"Indexed: {uploaded.name}")
             else:
                 if fhash not in st.session_state.active_collections:
