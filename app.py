@@ -57,15 +57,19 @@ UPLOAD_COUNTER = _m['upload_counter']
 ERROR_COUNTER = _m['error_counter']
 
 
-@st.cache_resource
-def _start_metrics_server():
+def start_metrics_server():
     port = int(os.getenv("PROMETHEUS_METRICS_PORT", "0"))
     if port:
         threading.Thread(target=start_http_server, args=(port,), daemon=True).start()
+
+
+@st.cache_resource
+def _start_metrics_server_once():
+    start_metrics_server()
     return True
 
 
-_start_metrics_server()
+_start_metrics_server_once()
 
 # ── MLflow experiment tracking ─────────────────────────────────────────────────
 def log_query_to_mlflow(query_type: str, document_name: str, retrieval_ms: float, total_ms: float):
