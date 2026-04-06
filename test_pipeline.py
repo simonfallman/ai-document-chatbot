@@ -236,6 +236,7 @@ def test_log_query_to_mlflow_calls_mlflow(monkeypatch):
 
 
 def test_log_query_to_mlflow_swallows_exceptions(monkeypatch):
+    monkeypatch.setenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
     with patch('mlflow.start_run', side_effect=Exception("connection refused")):
         from app import log_query_to_mlflow
         # Should not raise
