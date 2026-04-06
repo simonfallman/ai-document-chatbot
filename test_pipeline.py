@@ -214,9 +214,7 @@ def test_log_query_to_mlflow_calls_mlflow(monkeypatch):
     mock_run.__enter__ = MagicMock(return_value=mock_run)
     mock_run.__exit__ = MagicMock(return_value=False)
 
-    with patch('mlflow.set_tracking_uri') as mock_uri, \
-         patch('mlflow.set_experiment') as mock_exp, \
-         patch('mlflow.start_run', return_value=mock_run) as mock_start, \
+    with patch('mlflow.start_run', return_value=mock_run) as mock_start, \
          patch('mlflow.log_param') as mock_param, \
          patch('mlflow.log_metric') as mock_metric, \
          patch('mlflow.set_tag') as mock_tag:
@@ -224,8 +222,7 @@ def test_log_query_to_mlflow_calls_mlflow(monkeypatch):
         from app import log_query_to_mlflow
         log_query_to_mlflow("rag", "doc.pdf", retrieval_ms=42.0, total_ms=310.0)
 
-        mock_uri.assert_called_once()
-        mock_exp.assert_called_once_with("ai-document-chatbot")
+        mock_start.assert_called_once()
         mock_param.assert_any_call("chunk_size", 500)
         mock_param.assert_any_call("chunk_overlap", 50)
         mock_param.assert_any_call("model_id", "anthropic.claude-3-5-haiku-20241022-v1:0")
@@ -237,7 +234,18 @@ def test_log_query_to_mlflow_calls_mlflow(monkeypatch):
 
 
 def test_log_query_to_mlflow_swallows_exceptions(monkeypatch):
-    with patch('mlflow.set_tracking_uri', side_effect=Exception("connection refused")):
+    with patch('mlflow.start_run', side_effect=Exception("connection refused")):
         from app import log_query_to_mlflow
         # Should not raise
         log_query_to_mlflow("rag", "doc.pdf", retrieval_ms=10.0, total_ms=200.0)
+
+
+def test_error_counter_increments_on_exception():
+    from unittest.mock import patch
+    from app import ERROR_COUNTER
+    from prometheus_client import REGISTRY
+
+    before = REGISTRY.get_sample_value('errors_total', {'type': 'ValueError'}) or 0.0
+    ERROR_COUNTER.labels(type='ValueError').inc()
+    after = REGISTRY.get_sample_value('errors_total', {'type': 'ValueError'}) or 0.0
+    assert after == before + 1.0

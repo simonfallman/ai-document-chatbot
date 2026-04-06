@@ -30,8 +30,16 @@ from prometheus_client import Counter, Histogram, start_http_server
 
 # ── Prometheus metrics ─────────────────────────────────────────────────────────
 QUERY_COUNTER = Counter('query_total', 'Total RAG queries processed')
-QUERY_LATENCY = Histogram('query_latency_seconds', 'End-to-end query duration in seconds')
-RETRIEVAL_LATENCY = Histogram('retrieval_latency_seconds', 'ChromaDB retrieval duration in seconds')
+QUERY_LATENCY = Histogram(
+    'query_latency_seconds',
+    'End-to-end query duration in seconds',
+    buckets=[0.5, 1, 2, 4, 8, 15, 30, 60],
+)
+RETRIEVAL_LATENCY = Histogram(
+    'retrieval_latency_seconds',
+    'ChromaDB retrieval duration in seconds',
+    buckets=[0.1, 0.25, 0.5, 1, 2, 4],
+)
 UPLOAD_COUNTER = Counter('document_uploads_total', 'Total documents successfully indexed')
 ERROR_COUNTER = Counter('errors_total', 'Pipeline errors', ['type'])
 
@@ -47,8 +55,6 @@ start_metrics_server()
 # ── MLflow experiment tracking ─────────────────────────────────────────────────
 def log_query_to_mlflow(query_type: str, document_name: str, retrieval_ms: float, total_ms: float):
     try:
-        mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
-        mlflow.set_experiment("ai-document-chatbot")
         with mlflow.start_run():
             mlflow.log_param("chunk_size", CHUNK_SIZE)
             mlflow.log_param("chunk_overlap", CHUNK_OVERLAP)
@@ -60,6 +66,16 @@ def log_query_to_mlflow(query_type: str, document_name: str, retrieval_ms: float
             mlflow.set_tag("query_type", query_type)
     except Exception as e:
         print(f"[MLflow] logging failed: {e}")
+
+
+def init_mlflow():
+    try:
+        mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000"))
+        mlflow.set_experiment("ai-document-chatbot")
+    except Exception as e:
+        print(f"[MLflow] init failed: {e}")
+
+init_mlflow()
 
 load_dotenv()
 
@@ -335,17 +351,17 @@ def build_chain(vectorstores: list):
             # Tool: summarize
             if SUMMARIZE_TRIGGERS.search(question):
                 answer = tool_summarize(vectorstores)
-                total_ms = (time.time() - t_start) * 1000
-                QUERY_LATENCY.observe(time.time() - t_start)
-                log_query_to_mlflow("summarize", doc_names, 0.0, total_ms)
+                elapsed_s = time.time() - t_start
+                QUERY_LATENCY.observe(elapsed_s)
+                log_query_to_mlflow("summarize", doc_names, 0.0, elapsed_s * 1000)
                 return {"answer": answer, "context": []}
 
             # Tool: FAQ
             if FAQ_TRIGGERS.search(question):
                 answer = tool_faq(vectorstores)
-                total_ms = (time.time() - t_start) * 1000
-                QUERY_LATENCY.observe(time.time() - t_start)
-                log_query_to_mlflow("faq", doc_names, 0.0, total_ms)
+                elapsed_s = time.time() - t_start
+                QUERY_LATENCY.observe(elapsed_s)
+                log_query_to_mlflow("faq", doc_names, 0.0, elapsed_s * 1000)
                 return {"answer": answer, "context": []}
 
             # Default: RAG across all sources
@@ -353,8 +369,9 @@ def build_chain(vectorstores: list):
 
             t_retrieval = time.time()
             docs = multi_retrieve(vectorstores, standalone)
-            retrieval_ms = (time.time() - t_retrieval) * 1000
-            RETRIEVAL_LATENCY.observe(time.time() - t_retrieval)
+            elapsed_retrieval_s = time.time() - t_retrieval
+            RETRIEVAL_LATENCY.observe(elapsed_retrieval_s)
+            retrieval_ms = elapsed_retrieval_s * 1000
 
             answer = (qa_prompt | llm | StrOutputParser()).invoke({
                 "context": format_docs(docs),
@@ -362,9 +379,9 @@ def build_chain(vectorstores: list):
                 "input": question,
             })
 
-            total_ms = (time.time() - t_start) * 1000
-            QUERY_LATENCY.observe(time.time() - t_start)
-            log_query_to_mlflow("rag", doc_names, retrieval_ms, total_ms)
+            elapsed_s = time.time() - t_start
+            QUERY_LATENCY.observe(elapsed_s)
+            log_query_to_mlflow("rag", doc_names, retrieval_ms, elapsed_s * 1000)
 
             return {"answer": answer, "context": docs}
 
