@@ -224,7 +224,9 @@ def test_log_query_to_mlflow_calls_mlflow(monkeypatch):
          patch('mlflow.set_tag') as mock_tag:
 
         from app import log_query_to_mlflow
-        log_query_to_mlflow("rag", "doc.pdf", retrieval_ms=42.0, total_ms=310.0)
+        log_query_to_mlflow("rag", "doc.pdf", retrieval_ms=42.0, total_ms=310.0,
+                            query_length=20, answer_length=150,
+                            num_chunks_retrieved=4, avg_relevance_score=0.75)
 
         mock_start.assert_called_once()
         mock_param.assert_any_call("chunk_size", 500)
@@ -233,6 +235,10 @@ def test_log_query_to_mlflow_calls_mlflow(monkeypatch):
         mock_param.assert_any_call("k", 6)
         mock_metric.assert_any_call("retrieval_latency_ms", 42.0)
         mock_metric.assert_any_call("total_latency_ms", 310.0)
+        mock_metric.assert_any_call("query_length", 20)
+        mock_metric.assert_any_call("answer_length", 150)
+        mock_metric.assert_any_call("num_chunks_retrieved", 4)
+        mock_metric.assert_any_call("avg_relevance_score", 0.75)
         mock_tag.assert_any_call("document_name", "doc.pdf")
         mock_tag.assert_any_call("query_type", "rag")
 

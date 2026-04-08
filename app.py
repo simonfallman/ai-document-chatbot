@@ -72,7 +72,16 @@ def _start_metrics_server_once():
 _start_metrics_server_once()
 
 # ── MLflow experiment tracking ─────────────────────────────────────────────────
-def log_query_to_mlflow(query_type: str, document_name: str, retrieval_ms: float, total_ms: float):
+def log_query_to_mlflow(
+    query_type: str,
+    document_name: str,
+    retrieval_ms: float,
+    total_ms: float,
+    query_length: int = 0,
+    answer_length: int = 0,
+    num_chunks_retrieved: int = 0,
+    avg_relevance_score: float = 0.0,
+):
     uri = os.getenv("MLFLOW_TRACKING_URI")
     if not uri:
         return
@@ -86,6 +95,10 @@ def log_query_to_mlflow(query_type: str, document_name: str, retrieval_ms: float
             mlflow.log_param("k", RETRIEVAL_K)
             mlflow.log_metric("retrieval_latency_ms", retrieval_ms)
             mlflow.log_metric("total_latency_ms", total_ms)
+            mlflow.log_metric("query_length", query_length)
+            mlflow.log_metric("answer_length", answer_length)
+            mlflow.log_metric("num_chunks_retrieved", num_chunks_retrieved)
+            mlflow.log_metric("avg_relevance_score", avg_relevance_score)
             mlflow.set_tag("document_name", document_name)
             mlflow.set_tag("query_type", query_type)
     except Exception as e:
@@ -278,20 +291,22 @@ def get_vectorstores(collection_names: list):
     return [get_vectorstore(name) for name in collection_names]
 
 
-def multi_retrieve(vectorstores: list, query: str, k: int = RETRIEVAL_K) -> list:
-    """Query each vectorstore, merge results by relevance score, deduplicate."""
+def multi_retrieve(vectorstores: list, query: str, k: int = RETRIEVAL_K):
+    """Query each vectorstore, merge results by relevance score, deduplicate.
+    Returns (docs, scores) where scores are the top-k relevance scores."""
     all_results = []
     for vs in vectorstores:
         all_results.extend(vs.similarity_search_with_relevance_scores(query, k=4))
     all_results.sort(key=lambda x: x[1], reverse=True)
-    seen, unique = set(), []
-    for doc, _ in all_results:
+    seen, unique, scores = set(), [], []
+    for doc, score in all_results:
         if doc.page_content not in seen:
             seen.add(doc.page_content)
             unique.append(doc)
+            scores.append(score)
         if len(unique) >= k:
             break
-    return unique
+    return unique, scores
 
 
 def format_docs(docs):
@@ -380,7 +395,8 @@ def build_chain(vectorstores: list):
                 answer = tool_summarize(vectorstores)
                 elapsed_s = time.time() - t_start
                 QUERY_LATENCY.observe(elapsed_s)
-                log_query_to_mlflow("summarize", doc_names, 0.0, elapsed_s * 1000)
+                log_query_to_mlflow("summarize", doc_names, 0.0, elapsed_s * 1000,
+                                    query_length=len(question), answer_length=len(answer))
                 return {"answer": answer, "context": []}
 
             # Tool: FAQ
@@ -388,14 +404,15 @@ def build_chain(vectorstores: list):
                 answer = tool_faq(vectorstores)
                 elapsed_s = time.time() - t_start
                 QUERY_LATENCY.observe(elapsed_s)
-                log_query_to_mlflow("faq", doc_names, 0.0, elapsed_s * 1000)
+                log_query_to_mlflow("faq", doc_names, 0.0, elapsed_s * 1000,
+                                    query_length=len(question), answer_length=len(answer))
                 return {"answer": answer, "context": []}
 
             # Default: RAG across all sources
             standalone = condense_chain.invoke(inp) if inp.get("chat_history") else question
 
             t_retrieval = time.time()
-            docs = multi_retrieve(vectorstores, standalone)
+            docs, scores = multi_retrieve(vectorstores, standalone)
             elapsed_retrieval_s = time.time() - t_retrieval
             RETRIEVAL_LATENCY.observe(elapsed_retrieval_s)
             retrieval_ms = elapsed_retrieval_s * 1000
@@ -408,7 +425,10 @@ def build_chain(vectorstores: list):
 
             elapsed_s = time.time() - t_start
             QUERY_LATENCY.observe(elapsed_s)
-            log_query_to_mlflow("rag", doc_names, retrieval_ms, elapsed_s * 1000)
+            avg_score = sum(scores) / len(scores) if scores else 0.0
+            log_query_to_mlflow("rag", doc_names, retrieval_ms, elapsed_s * 1000,
+                                query_length=len(question), answer_length=len(answer),
+                                num_chunks_retrieved=len(docs), avg_relevance_score=avg_score)
 
             return {"answer": answer, "context": docs}
 
