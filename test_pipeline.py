@@ -216,7 +216,9 @@ def test_log_query_to_mlflow_calls_mlflow(monkeypatch):
     mock_run.__enter__ = MagicMock(return_value=mock_run)
     mock_run.__exit__ = MagicMock(return_value=False)
 
-    with patch('mlflow.start_run', return_value=mock_run) as mock_start, \
+    with patch('mlflow.set_tracking_uri'), \
+         patch('mlflow.set_experiment'), \
+         patch('mlflow.start_run', return_value=mock_run) as mock_start, \
          patch('mlflow.log_param') as mock_param, \
          patch('mlflow.log_metric') as mock_metric, \
          patch('mlflow.set_tag') as mock_tag:
@@ -237,7 +239,9 @@ def test_log_query_to_mlflow_calls_mlflow(monkeypatch):
 
 def test_log_query_to_mlflow_swallows_exceptions(monkeypatch):
     monkeypatch.setenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
-    with patch('mlflow.start_run', side_effect=Exception("connection refused")):
+    with patch('mlflow.set_tracking_uri'), \
+         patch('mlflow.set_experiment'), \
+         patch('mlflow.start_run', side_effect=Exception("connection refused")):
         from app import log_query_to_mlflow
         # Should not raise
         log_query_to_mlflow("rag", "doc.pdf", retrieval_ms=10.0, total_ms=200.0)
