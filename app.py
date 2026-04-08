@@ -73,9 +73,12 @@ _start_metrics_server_once()
 
 # ── MLflow experiment tracking ─────────────────────────────────────────────────
 def log_query_to_mlflow(query_type: str, document_name: str, retrieval_ms: float, total_ms: float):
-    if not os.getenv("MLFLOW_TRACKING_URI"):
+    uri = os.getenv("MLFLOW_TRACKING_URI")
+    if not uri:
         return
     try:
+        mlflow.set_tracking_uri(uri)
+        mlflow.set_experiment("ai-document-chatbot")
         with mlflow.start_run():
             mlflow.log_param("chunk_size", CHUNK_SIZE)
             mlflow.log_param("chunk_overlap", CHUNK_OVERLAP)
@@ -461,10 +464,6 @@ def new_conversation():
 # ── UI ────────────────────────────────────────────────────────────────────────
 
 st.set_page_config(page_title="AI Document Chatbot", page_icon="📄", layout="wide")
-
-if not os.getenv("OPENAI_API_KEY"):
-    st.error("OPENAI_API_KEY is not set. Create a .env file with your key.")
-    st.stop()
 
 # Password protection
 APP_PASSWORD = os.getenv("APP_PASSWORD")

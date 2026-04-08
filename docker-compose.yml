@@ -26,6 +26,7 @@ services:
       --port 5000
       --backend-store-uri sqlite:///mlflow/mlflow.db
       --default-artifact-root /mlflow/artifacts
+      --static-prefix /mlflow
     restart: unless-stopped
 
   prometheus:
