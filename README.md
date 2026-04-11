@@ -62,8 +62,8 @@ flowchart TD
 - Per-document vector isolation via MD5-keyed ChromaDB collections
 - **Tools:** multi-source summarization (map-reduce) and FAQ generation via intent detection
 - Password protection (optional, via `APP_PASSWORD`)
-- **Monitoring:** Prometheus metrics + Grafana dashboard (queries/min, latency, errors, uploads)
-- **Experiment tracking:** MLflow logs per-query metrics (latency, chunk count, relevance scores)
+- **Observability:** Prometheus histograms track end-to-end and retrieval latency separately — Grafana dashboards show real-time query volume, latency distribution, error rate, and upload counts
+- **Experiment tracking:** MLflow logs every query as a run with config params (chunk size, k, model) alongside quality metrics (relevance score, latency, chunks retrieved) — making configuration changes measurable and comparable across runs
 
 ## Local Setup
 
@@ -99,6 +99,49 @@ docker compose up -d
 | MLflow | http://localhost:5000 |
 | Prometheus | http://localhost:9090 |
 | Grafana | http://localhost:3000 |
+
+## Observability & Experiment Tracking
+
+RAG quality is invisible without instrumentation. This stack makes every query measurable and every configuration change comparable.
+
+### Real-Time Metrics — Prometheus + Grafana
+
+Five metrics are tracked on every request:
+
+| Metric | Type | What it tells you |
+|---|---|---|
+| `query_total` | Counter | Request volume and traffic patterns |
+| `query_latency_seconds` | Histogram | End-to-end latency distribution (p50, p95, p99) |
+| `retrieval_latency_seconds` | Histogram | ChromaDB retrieval time in isolation |
+| `document_uploads_total` | Counter | Ingestion volume |
+| `errors_total{type}` | Counter | Failure rate, labelled by exception class |
+
+Latency is tracked as a **histogram** — not just an average. This surfaces whether slowness is consistent or spiky, which matters when debugging retrieval at scale.
+
+Grafana dashboards at `http://localhost:3000` show all of these in real time. If retrieval latency spikes after a chunk size change, you see it immediately.
+
+### Experiment Tracking — MLflow
+
+Every query is logged as an MLflow run with both **config params** and **quality metrics**:
+
+```python
+# Config — what was the system set to?
+mlflow.log_param("chunk_size", 500)
+mlflow.log_param("chunk_overlap", 50)
+mlflow.log_param("model_id", MODEL_ID)
+mlflow.log_param("k", 6)
+
+# Quality — how did it perform?
+mlflow.log_metric("retrieval_latency_ms", ...)
+mlflow.log_metric("avg_relevance_score", ...)
+mlflow.log_metric("num_chunks_retrieved", ...)
+mlflow.log_metric("total_latency_ms", ...)
+mlflow.set_tag("query_type", "rag" | "summarize" | "faq")
+```
+
+This makes configuration changes testable. Change `chunk_size` from 500 to 250, run a set of queries, and compare runs in the MLflow UI — did average relevance scores go up? Did latency drop? The data decides, not intuition.
+
+MLflow at `http://localhost:5000`.
 
 ## CI/CD
 
